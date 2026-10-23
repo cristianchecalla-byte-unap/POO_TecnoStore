@@ -15,10 +15,7 @@ NOTA: El archivo principal se denomina main.cpp
 
 ## 📸 Capturas
 
-<!-- Sube tus capturas a la carpeta docs/ y quita los comentarios -->
-<!-- ![Inicio](docs/inicio.png) -->
-<!-- ![Carrito](docs/carrito.png) -->
-<!-- ![Pago](docs/pago.png) -->
+(https://github.com/cristianchecalla-byte-unap/POO_TecnoStore/blob/main/Informe/Capturas%20e%20Imagenes/fig_menu_aplicacion.png)
 
 ## 🎬 Video de demostración
 
