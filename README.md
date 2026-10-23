@@ -71,8 +71,7 @@ El código se divide en dos capas: **dominio** (reglas del negocio) e **interfaz
 
 ## ⚙️ Requisitos
 
-- Compilador con soporte de **C++17** (`g++` 9 o superior)
-- Biblioteca **[raylib](https://www.raylib.com/)** instalada
+- Compilador con soporte de **C++14**
 - *(Windows, opcional)* **[Code::Blocks](https://www.codeblocks.org/)** como IDE, junto con **MSYS2** (ver la [guía de Code::Blocks](#-ejecutar-con-codeblocks-windows))
 
 ### Instalar raylib
