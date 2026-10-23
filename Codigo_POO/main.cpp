@@ -1,5 +1,5 @@
 // =====================================================================================
-// TIENDA DE COMPUTADORAS "TecnoStore" - C++17 (POO) + raylib      (versión legible)
+// TIENDA DE COMPUTADORAS "TecnoStore" - C++ (POO) + raylib
 // =====================================================================================
 // Controles : F11 = pantalla completa · ESC = cierra ventanas / limpia la búsqueda
 // Imágenes opcionales:  img/productos/<codigo>.png   y   img/marcas/<marca>.png
