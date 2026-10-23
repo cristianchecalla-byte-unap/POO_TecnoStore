@@ -15,10 +15,10 @@ NOTA: El archivo principal se denomina main.cpp
 
 ## 📸 Capturas
 
-![Diagrama de clases de la tienda](Informe/Capturas%20e%20Imagenes/fig_diagrama_tienda.png)
+![Pantalla del menu principal](Informe/Capturas%20e%20Imagenes/fig_menu_aplicacion.png)
 
 ### Diagrama de producto
-![Diagrama de clases de producto](Informe/Capturas%20e%20Imagenes/fig_diagrama_producto.png)
+![Ingreso de datos y cupon](Informe/Capturas%20e%20Imagenes/fig_cupones_aplicados.png)
 
 ### Compra finalizada
 ![Pantalla de compra finalizada](Informe/Capturas%20e%20Imagenes/fig_compra_finalizada.png)
