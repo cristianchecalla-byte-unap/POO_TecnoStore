@@ -1,0 +1,18 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "type": "shell",
+            "label": "compilar con raylib",
+            "command": "mkdir -p ${workspaceFolder}/Codigo_POO/build && g++ -std=c++17 ${workspaceFolder}/Codigo_POO/*.cpp -o ${workspaceFolder}/Codigo_POO/build/game -lraylib -lGL -lm -lpthread -ldl -lrt -lX11",
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "problemMatcher": [
+                "$gcc"
+            ],
+            "detail": "Tarea de compilación para Raylib."
+        }
+    ]
+}

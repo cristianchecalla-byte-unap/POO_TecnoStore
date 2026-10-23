@@ -1,0 +1,19 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "C/C++ Launch (Raylib)",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/Codigo_POO/build/game",
+            "args": [],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}/Codigo_POO",
+            "environment": [],
+            "externalConsole": false,
+            "MIMode": "gdb",
+            "preLaunchTask": "compilar con raylib",
+            "miDebuggerPath": "gdb"
+        }
+    ]
+}
