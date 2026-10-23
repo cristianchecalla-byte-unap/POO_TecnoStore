@@ -15,7 +15,13 @@ NOTA: El archivo principal se denomina main.cpp
 
 ## 📸 Capturas
 
-(https://github.com/cristianchecalla-byte-unap/POO_TecnoStore/blob/main/Informe/Capturas%20e%20Imagenes/fig_menu_aplicacion.png)
+![Diagrama de clases de la tienda](Informe/Capturas%20e%20Imagenes/fig_diagrama_tienda.png)
+
+### Diagrama de producto
+![Diagrama de clases de producto](Informe/Capturas%20e%20Imagenes/fig_diagrama_producto.png)
+
+### Compra finalizada
+![Pantalla de compra finalizada](Informe/Capturas%20e%20Imagenes/fig_compra_finalizada.png)
 
 ## 🎬 Video de demostración
 
