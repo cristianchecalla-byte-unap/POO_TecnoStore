@@ -20,8 +20,8 @@ Aplicación de escritorio que simula una tienda de computadoras, desarrollada en
 
 ## 🎬 Video de demostración
 
-[[▶️ Ver el video](PEGAR_AQUI_EL_ENLACE_DEL_VIDEO)
-](https://drive.google.com/file/d/168Y22QBmH3TcarbfVL0Tpzig_2Y6_P_i/view?usp=sharing)
+[[▶️ Ver el video](https://drive.google.com/file/d/168Y22QBmH3TcarbfVL0Tpzig_2Y6_P_i/view?usp=sharing)
+]
 ---
 
 ## ✨ Funciones principales
