@@ -111,6 +111,8 @@ g++ -std=c++17 TiendaPOO_ordenado.cpp -o tienda.exe -lraylib -lopengl32 -lgdi32 
 ./tienda.exe
 ```
 
+NOTA: Existe una version que no emplea la libreria raylib y solo es desde consola, con el proposito de compilarlo con mas facilidad.
+
 > ⚠️ Crea una carpeta `img/` junto al ejecutable. Allí se guarda `inventario.dat`; sin ella, el stock no se conserva entre sesiones.
 
 ---
@@ -201,11 +203,11 @@ Si no hay imágenes, el programa dibuja ilustraciones propias.
 
 ```
 .
-├── TiendaPOO_ordenado.cpp      # Código fuente completo
-├── Informe_TecnoStore.pdf      # Informe técnico (PDF)
-├── Informe_TecnoStore.docx     # Informe técnico (Word)
-├── Informe_TecnoStore.tex      # Informe técnico (LaTeX)
-├── img/                        # Inventario, fotos y logos (opcional)
+POO_TecnoStore/
+├── Codigo_POO/                  Código fuente (C++)
+├── Informe/
+│   └── Capturas e Imagenes/     Diagramas y capturas del informe
+├── .vscode/                     Configuración del editor
 └── README.md
 ```
 
@@ -214,13 +216,10 @@ Si no hay imágenes, el programa dibuja ilustraciones propias.
 | N.° | Apellidos y nombres | Código |
 |---|---|---|
 | 1 | Checalla Alata, Cristian Alex | 231503 |
-| 2 | Balatro Balatrez | 123454 |
-| 3 | Neko Baboso | 123429 |
+| 2 | Condori Tarqui William Martin | 123454 |
+| 3 | Huacasi Sejje, Anthony Jose | 123429 |
 
-**Docente:** Mr. Aceituno Deidad XD
+**Docente:** Miguel Romilio, Aceituno Rojo
 
 ---
 
-## 📄 Licencia
-
-Proyecto académico con fines educativos.
