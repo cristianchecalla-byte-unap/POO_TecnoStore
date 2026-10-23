@@ -4,33 +4,18 @@
 // Controles : F11 = pantalla completa · ESC = cierra ventanas / limpia la búsqueda
 // Imágenes opcionales:  img/productos/<codigo>.png   y   img/marcas/<marca>.png
 //
-// Compilar:
-//   Linux  : g++ -std=c++17 tienda_legible.cpp -o tienda -lraylib -lGL -lm -lpthread -ldl -lrt -lX11
-//   Windows: g++ -std=c++17 tienda_legible.cpp -o tienda.exe -lraylib -lopengl32 -lgdi32 -lwinmm
-//
 // Cupones: TECNO10 (10%) · BIENVENIDO (S/ 20, desde S/ 100) · GAMER50 (S/ 50, desde S/ 1000)
 //          PRIMERA5 (5%) · ACEITUNO (90%)
 //
 // Conceptos de POO usados:
-//   Abstracción     : Producto, Persona, MedioPago, Comprobante, Envio, Promocion, Cupon, ElementoUI
+//   Abstracción     : Producto, Persona, MedioPago, Comprobante, Envio, Promocion, Cupon, ElementoUI, Pantalla
 //   Encapsulamiento : atributos protected/private + getters
 //   Herencia        : Producto > Componente > CPU...   |   Persona > Trabajador > Vendedor...
 //   Polimorfismo    : precioFinal, detalle, recargo, validar, emitir, comision, calcular, dibujar
-//   Composición     : Tienda tiene Catálogo, Carrito, Equipo, Cupones
-//   SOLID           : un nuevo medio de pago o cupón = una nueva clase (OCP);
-//                     el dominio (clases) está separado de la interfaz (SRP)
 //
-// ÍNDICE (busca estos títulos con Ctrl+F)
-//   1. UTILIDADES BÁSICAS
-//   2. DOMINIO: PERSONAS
-//   3. DOMINIO: PRODUCTOS
-//   4. DOMINIO: PAGO, COMPROBANTE, ENVÍO, PROMOCIONES, CUPONES, CARRITO
-//   5. DOMINIO: TIENDA
-//   6. INTERFAZ: ayudas de dibujo
-//   7. INTERFAZ: ilustraciones de productos (arte)
-//   8. INTERFAZ: elementos y pantallas (clase Interfaz)
-//   9. MAIN
-// =====================================================================================
+// INDICE
+//   1. UTILIDADES   2. PERSONAS   3. PRODUCTOS   4. PAGO, COMPROBANTE, ENVÍO, PROMOCIONES, CUPONES, CARRITO
+//   5. TIENDA       6. INTERFAZ (raylib)         7. MAIN
 
 #include "raylib.h"
 #include "raymath.h"
@@ -39,12 +24,45 @@
 using namespace std;
 
 // =====================================================================================
-// 1. UTILIDADES BÁSICAS
+// 1. UTILIDADES
 // =====================================================================================
 
-// Da formato de dinero: 12.5 -> "S/ 12.50"
+static string dec(double valor, int decimales = 2) {
+    long long factor = 1;
+    for (int i = 0; i < decimales; i++)
+        factor *= 10;
+
+    bool negativo = valor < 0;
+    if (negativo)
+        valor = -valor;
+
+    long long total = (long long)(valor * factor + 0.5);
+    if (total == 0)
+        negativo = false;
+
+    string resultado = to_string(total / factor);
+    if (decimales > 0) {
+        string fraccion = to_string(total % factor);
+        while ((int)fraccion.size() < decimales)
+            fraccion = "0" + fraccion;
+        resultado += "." + fraccion;
+    }
+    return (negativo ? "-" : "") + resultado;
+}
+
+static string ceros(int numero, int ancho) {
+    string texto = to_string(numero);
+    while ((int)texto.size() < ancho)
+        texto = "0" + texto;
+    return texto;
+}
+
+static int limitar(int valor, int minimo, int maximo) {
+    return valor < minimo ? minimo : valor > maximo ? maximo : valor;
+}
+
 static string dinero(double valor) {
-    return TextFormat("S/ %.2f", valor);
+    return "S/ " + dec(valor);
 }
 
 static string minusc(string texto) {
@@ -59,7 +77,6 @@ static string mayusc(string texto) {
     return texto;
 }
 
-// Parte un texto por un separador: "a|b|c" -> {"a","b","c"}
 static vector<string> dividir(const string& texto, char separador = '|') {
     vector<string> partes;
     stringstream flujo(texto);
@@ -70,8 +87,7 @@ static vector<string> dividir(const string& texto, char separador = '|') {
 }
 
 // =====================================================================================
-// 2. DOMINIO: PERSONAS
-//    Persona (abstracta) > Cliente / Proveedor / Trabajador > Cajero, Vendedor, Tecnico, Gerente
+// 2. PERSONAS
 // =====================================================================================
 
 struct DatosPersona {
@@ -96,11 +112,11 @@ public:
         return datos_;
     }
 
-    virtual string rol() const = 0;  // cada tipo de persona describe su rol
+    virtual string rol() const = 0;
 };
 
 class Cliente : public Persona {
-    string tipo_;       // "persona" o "empresa"
+    string tipo_;
     string direccion_;
 
 public:
@@ -156,8 +172,7 @@ public:
         return sueldo_;
     }
 
-    // Por defecto un trabajador no gana comisión; Vendedor y Gerente lo sobrescriben.
-    virtual double comision(double /*montoVenta*/) const {
+    virtual double comision(double) const {
         return 0;
     }
 };
@@ -184,7 +199,7 @@ public:
     }
 
     string rol() const override {
-        return TextFormat("Vendedor · comisión %.1f%%", porcentajeComision_);
+        return "Vendedor · comisión " + dec(porcentajeComision_, 1) + "%";
     }
 
     double comision(double montoVenta) const override {
@@ -223,18 +238,15 @@ public:
 };
 
 // =====================================================================================
-// 3. DOMINIO: PRODUCTOS
-//    Producto (abstracto) > Componente / Accesorio / Periferico / Software / EquipoCompleto / Servicio
+// 3. PRODUCTOS
 // =====================================================================================
 
-// Un "modelo" es una variante del producto. El precio del modelo = precio base × factor.
 struct Modelo {
     string nombre;
     double factor;
     bool recomendado;
 };
 
-// Lee modelos desde texto: "Nombre:factor|Nombre:factor*"   (el * marca el recomendado)
 static vector<Modelo> parseModelos(const string& texto) {
     vector<Modelo> modelos;
     for (string item : dividir(texto)) {
@@ -247,7 +259,6 @@ static vector<Modelo> parseModelos(const string& texto) {
     return modelos;
 }
 
-// Datos comunes que se necesitan para crear cualquier producto.
 struct Ficha {
     string codigo, nombre, marca;
     double precio;
@@ -255,7 +266,6 @@ struct Ficha {
     string modelos = "Básico:0.8|Estándar:1*|Pro:1.6";
 };
 
-// Modelos sugeridos por marca (para productos NUEVOS). Una clave que empieza con "=" exige coincidencia exacta.
 static vector<string> modelosDeMarca(const string& marca) {
     static const vector<pair<string, string>> tabla = {
         {"intel",
@@ -286,18 +296,18 @@ static vector<string> modelosDeMarca(const string& marca) {
         {"hyperx", "Cloud Stinger 2|Cloud III|Cloud Alpha|QuadCast S|QuadCast 2|SoloCast|Alloy Origins|Pulsefire Haste 2"}};
 
     string marcaMinuscula = minusc(marca);
-    for (auto& [clave, modelos] : tabla) {
+    for (const auto& entrada : tabla) {
+        const string& clave = entrada.first;
+        const string& modelos = entrada.second;
         bool exacta = clave[0] == '=';
         bool coincide = exacta ? marcaMinuscula == clave.substr(1) : marcaMinuscula.find(clave) != string::npos;
         if (coincide)
             return dividir(modelos);
     }
-    // Marca desconocida: modelos genéricos
     return dividir(
         "Modelo estándar|Generación actual|Generación anterior|Versión Pro|Edición básica|Edición avanzada|Edición gamer|Edición profesional");
 }
 
-// Convierte los modelos elegidos en el formulario al formato de texto "Nombre:1*|Nombre:1".
 static string textoModelosElegidos(const vector<string>& elegidos) {
     string resultado;
     for (size_t i = 0; i < elegidos.size(); i++)
@@ -305,7 +315,6 @@ static string textoModelosElegidos(const vector<string>& elegidos) {
     return resultado.empty() ? "Estándar:1*" : resultado;
 }
 
-// Listas amplias de modelos para los productos del catálogo (clave = código del producto).
 static const unordered_map<string, string>& modelosAmpliados() {
     static const unordered_map<string, string> mapa = {
         {"CPU-01",
@@ -334,10 +343,8 @@ static const unordered_map<string, string>& modelosAmpliados() {
     return mapa;
 }
 
-// Categorías de producto (el número se usa como índice en la interfaz)
 enum Categoria { HARDWARE = 0, ACCESORIOS, PERIFERICOS, SOFTWARE, EQUIPOS, SERVICIOS };
 
-// ---------------------------- clase base ----------------------------
 class Producto {
 protected:
     string codigo_, nombre_, marca_;
@@ -345,6 +352,7 @@ protected:
     int categoria_, garantiaMeses_, stock_;
     vector<Modelo> modelos_;
     bool oferta_ = false;
+    mutable double desde_ = -1;
 
 public:
     Producto(const Ficha& ficha, int categoria)
@@ -357,7 +365,6 @@ public:
 
     virtual ~Producto() = default;
 
-    // ---- getters ----
     const string& codigo() const {
         return codigo_;
     }
@@ -390,22 +397,22 @@ public:
         return modelos_;
     }
 
-    // ---- modelos ----
     void fijarModelos(const string& texto) {
         auto nuevos = parseModelos(texto);
-        if (!nuevos.empty())
+        if (!nuevos.empty()) {
             modelos_ = nuevos;
+            desde_ = -1;
+        }
     }
 
     string modelosTexto() const {
         string resultado;
         for (const auto& m : modelos_)
-            resultado += (resultado.empty() ? "" : "|") + m.nombre + ":" + TextFormat("%.4f", m.factor) +
-                         (m.recomendado ? "*" : "");
+            resultado += (resultado.empty() ? "" : "|") + m.nombre + ":" + dec(m.factor, 4) + (m.recomendado ? "*" : "");
         return resultado;
     }
 
-    int recomendado() const {  // índice del modelo recomendado (0 si no hay)
+    int recomendado() const {
         for (size_t i = 0; i < modelos_.size(); i++)
             if (modelos_[i].recomendado)
                 return (int)i;
@@ -413,11 +420,11 @@ public:
     }
 
     double precioModelo(int indice) const {
-        size_t i = (size_t)Clamp((float)indice, 0, (float)modelos_.size() - 1);
-        return precioBase_ * modelos_[i].factor;
+        if (modelos_.empty())
+            return precioBase_;
+        size_t i = (size_t)limitar(indice, 0, (int)modelos_.size() - 1);        return precioBase_ * modelos_[i].factor;
     }
 
-    // ---- stock ----
     bool disponible() const {
         return stock_ > 0;
     }
@@ -434,7 +441,6 @@ public:
         stock_ = max(0, cantidad);
     }
 
-    // ---- oferta y precio (polimórficos) ----
     void marcarOferta() {
         oferta_ = true;
     }
@@ -447,10 +453,18 @@ public:
         return precioModelo(modelo);
     }
 
-    virtual string detalle() const = 0;  // cada producto describe sus especificaciones
+    double desdePrecio() const {
+        if (desde_ < 0) {
+            desde_ = precioFinal(0);
+            for (size_t i = 1; i < modelos_.size(); i++)
+                desde_ = min(desde_, precioFinal((int)i));
+        }
+        return desde_;
+    }
+
+    virtual string detalle() const = 0;
 };
 
-// Producto creado por el usuario desde la pestaña Inventario.
 class ProductoPersonalizado : public Producto {
     string detalle_;
 
@@ -464,7 +478,6 @@ public:
     }
 };
 
-// ---------------------------- Componentes (hardware) ----------------------------
 class Componente : public Producto {
 protected:
     int potenciaW_;
@@ -484,7 +497,8 @@ public:
     }
 
     string detalle() const override {
-        return TextFormat("%d núcleos · %d hilos · %.1f GHz · %d W", nucleos_, hilos_, ghz_, potenciaW_);
+        return to_string(nucleos_) + " núcleos · " + to_string(hilos_) + " hilos · " + dec(ghz_, 1) + " GHz · " +
+               to_string(potenciaW_) + " W";
     }
 };
 
@@ -498,7 +512,7 @@ public:
     }
 
     string detalle() const override {
-        return TextFormat("%d GB VRAM · %.1f GHz · %d núcleos", vramGB_, ghz_, nucleos_);
+        return to_string(vramGB_) + " GB VRAM · " + dec(ghz_, 1) + " GHz · " + to_string(nucleos_) + " núcleos";
     }
 };
 
@@ -512,7 +526,7 @@ public:
     }
 
     string detalle() const override {
-        return TextFormat("%d GB %s · %d MHz", capacidadGB_, tipoDDR_.c_str(), mhz_);
+        return to_string(capacidadGB_) + " GB " + tipoDDR_ + " · " + to_string(mhz_) + " MHz";
     }
 };
 
@@ -528,7 +542,8 @@ public:
     }
 
     string detalle() const override {
-        return TextFormat("%s · %d GB · %d/%d MB/s", formato_.c_str(), capacidadGB_, lecturaMBs_, escrituraMBs_);
+        return formato_ + " · " + to_string(capacidadGB_) + " GB · " + to_string(lecturaMBs_) + "/" +
+               to_string(escrituraMBs_) + " MB/s";
     }
 };
 
@@ -560,7 +575,7 @@ public:
     }
 
     string detalle() const override {
-        return TextFormat("Socket %s · %s · %d ranuras RAM", socket_.c_str(), chipset_.c_str(), ranurasRAM_);
+        return "Socket " + socket_ + " · " + chipset_ + " · " + to_string(ranurasRAM_) + " ranuras RAM";
     }
 };
 
@@ -573,7 +588,7 @@ public:
     }
 
     string detalle() const override {
-        return TextFormat("%d W · %s", potenciaW_, certificacion_.c_str());
+        return to_string(potenciaW_) + " W · " + certificacion_;
     }
 };
 
@@ -586,11 +601,10 @@ public:
     }
 
     string detalle() const override {
-        return TextFormat("%d RPM · %d mm", rpm_, diametroMm_);
+        return to_string(rpm_) + " RPM · " + to_string(diametroMm_) + " mm";
     }
 };
 
-// ---------------------------- Accesorios ----------------------------
 class Accesorio : public Producto {
 protected:
     string compatibilidad_;
@@ -610,7 +624,7 @@ public:
     }
 
     string detalle() const override {
-        return TextFormat("%s %d GB · %s", tipo_.c_str(), capacidadGB_, compatibilidad_.c_str());
+        return tipo_ + " " + to_string(capacidadGB_) + " GB · " + compatibilidad_;
     }
 };
 
@@ -623,7 +637,7 @@ public:
     }
 
     string detalle() const override {
-        return TextFormat("%d gramos · %s", gramos_, compatibilidad_.c_str());
+        return to_string(gramos_) + " gramos · " + compatibilidad_;
     }
 };
 
@@ -637,7 +651,7 @@ public:
     }
 
     string detalle() const override {
-        return TextFormat("Conector %s · %.1f m", conector_.c_str(), metros_);
+        return "Conector " + conector_ + " · " + dec(metros_, 1) + " m";
     }
 };
 
@@ -664,17 +678,16 @@ public:
     }
 
     string detalle() const override {
-        return TextFormat("%s · %d W · %s", conector_.c_str(), potenciaW_, compatibilidad_.c_str());
+        return conector_ + " · " + to_string(potenciaW_) + " W · " + compatibilidad_;
     }
 };
 
-// ---------------------------- Periféricos ----------------------------
 class Periferico : public Producto {
     string conexion_;
     bool inalambrico_, bluetooth_;
 
 protected:
-    string conectividad() const {  // texto común: "USB · Inalámbrico · Bluetooth"
+    string conectividad() const {
         return conexion_ + (inalambrico_ ? " · Inalámbrico" : "") + (bluetooth_ ? " · Bluetooth" : "");
     }
 
@@ -694,7 +707,7 @@ public:
     }
 
     string detalle() const override {
-        return conectividad() + TextFormat(" · %d DPI%s", dpi_, rgb_ ? " · RGB" : "");
+        return conectividad() + " · " + to_string(dpi_) + " DPI" + (rgb_ ? " · RGB" : "");
     }
 };
 
@@ -721,7 +734,7 @@ public:
     }
 
     string detalle() const override {
-        return conectividad() + TextFormat(" · %d W", potenciaW_);
+        return conectividad() + " · " + to_string(potenciaW_) + " W";
     }
 };
 
@@ -735,7 +748,7 @@ public:
     }
 
     string detalle() const override {
-        return TextFormat("%s · %d fps · ", resolucion_.c_str(), fps_) + conectividad();
+        return resolucion_ + " · " + to_string(fps_) + " fps · " + conectividad();
     }
 };
 
@@ -765,21 +778,19 @@ public:
     }
 };
 
-// ---------------------------- Software ----------------------------
 class Software : public Producto {
     bool permanente_;
     int meses_;
 
 protected:
     string licencia() const {
-        return permanente_ ? string("Licencia permanente") : string(TextFormat("Licencia de %d meses", meses_));
+        return permanente_ ? string("Licencia permanente") : "Licencia de " + to_string(meses_) + " meses";
     }
 
 public:
     Software(const Ficha& ficha, bool permanente, int meses) : Producto(ficha, SOFTWARE), permanente_(permanente), meses_(meses) {
     }
 
-    // Descuento del 5% por ser licencia digital
     double precioFinal(int modelo = 0) const override {
         return precioModelo(modelo) * 0.95;
     }
@@ -815,7 +826,6 @@ public:
     }
 };
 
-// ---------------------------- Equipos completos ----------------------------
 class EquipoCompleto : public Producto {
     string procesador_, ram_, almacenamiento_;
 
@@ -829,7 +839,6 @@ public:
         : Producto(ficha, EQUIPOS), procesador_(move(procesador)), ram_(move(ram)), almacenamiento_(move(almacenamiento)) {
     }
 
-    // El precio incluye la garantía: S/ 10 por cada mes
     double precioFinal(int modelo = 0) const override {
         return precioModelo(modelo) + garantiaMeses_ * 10.0;
     }
@@ -860,7 +869,8 @@ public:
     }
 
     string detalle() const override {
-        return string(TextFormat("%.1f\" %s · %d Wh · ", pulgadas_, oled_ ? "OLED" : "LED", bateriaWh_)) + especificaciones();
+        return dec(pulgadas_, 1) + "\" " + (oled_ ? "OLED" : "LED") + " · " + to_string(bateriaWh_) + " Wh · " +
+               especificaciones();
     }
 };
 
@@ -876,11 +886,10 @@ public:
     }
 
     string detalle() const override {
-        return TextFormat("%s · %d ppm%s", tecnologia_.c_str(), paginasPorMinuto_, tieneEscaner_ ? " · Escáner" : "");
+        return tecnologia_ + " · " + to_string(paginasPorMinuto_) + " ppm" + (tieneEscaner_ ? " · Escáner" : "");
     }
 };
 
-// ---------------------------- Servicios ----------------------------
 class Servicio : public Producto {
 protected:
     string descripcion_;
@@ -916,32 +925,27 @@ public:
     }
 
     string detalle() const override {
-        return descripcion_ + TextFormat(" · vigencia %d meses", vigenciaMeses_);
+        return descripcion_ + " · vigencia " + to_string(vigenciaMeses_) + " meses";
     }
 };
 
-// Precio más bajo entre todos los modelos ("Desde S/ ...")
 static double desdePrecio(const Producto* producto) {
-    double menor = producto->precioFinal(0);
-    for (size_t i = 1; i < producto->modelos().size(); i++)
-        menor = min(menor, producto->precioFinal((int)i));
-    return menor;
+    return producto->desdePrecio();
 }
 
 // =====================================================================================
-// 4. DOMINIO: PAGO, COMPROBANTE, ENVÍO, PROMOCIONES, CUPONES, CARRITO
+// 4. PAGO, COMPROBANTE, ENVÍO, PROMOCIONES, CUPONES, CARRITO
 // =====================================================================================
 
-// ---------------------------- Medios de pago ----------------------------
 class MedioPago {
 public:
     virtual ~MedioPago() = default;
     virtual string nombre() const = 0;
-    virtual string campo() const = 0;                                     // dato que se pide al pagar
-    virtual string validar(const string& dato, double total) const = 0;   // "" = válido, si no: mensaje de error
+    virtual string campo() const = 0;
+    virtual string validar(const string& dato, double total) const = 0;
     virtual string resumen(const string& dato, double total) const = 0;
 
-    virtual double recargo(double /*monto*/) const {
+    virtual double recargo(double) const {
         return 0;
     }
 };
@@ -990,7 +994,6 @@ public:
     }
 };
 
-// Base común de Yape y Plin: piden un celular de 9 dígitos que empiece con 9
 class Billetera : public MedioPago {
     string nombre_;
 
@@ -1028,7 +1031,6 @@ public:
     }
 };
 
-// ---------------------------- Comprobantes ----------------------------
 class Comprobante {
 public:
     virtual ~Comprobante() = default;
@@ -1077,7 +1079,6 @@ public:
     }
 };
 
-// ---------------------------- Envíos ----------------------------
 class Envio {
 public:
     virtual ~Envio() = default;
@@ -1115,14 +1116,12 @@ public:
     }
 };
 
-// ---------------------------- Líneas del carrito y promociones ----------------------------
 struct Linea {
     const Producto* producto;
     int modelo;
     int cantidad;
 };
 
-// Cuántas unidades de un producto (por nombre) hay en las líneas
 static int cantidadPorNombre(const vector<Linea>& lineas, const string& nombre) {
     int total = 0;
     for (auto& l : lineas)
@@ -1145,7 +1144,6 @@ public:
     virtual double descuento(const vector<Linea>& lineas) const = 0;
 };
 
-// Combo: por cada par (A + B) se descuenta un monto fijo
 class PromoCombo : public Promocion {
     string productoA_, productoB_;
     double descuentoPorPar_;
@@ -1165,17 +1163,16 @@ public:
     }
 };
 
-// Volumen: si llevas N o más productos, descuento porcentual sobre el subtotal
 class PromoVolumen : public Promocion {
     int minimoProductos_;
-    double porcentaje_;  // 0.05 = 5%
+    double porcentaje_;
 
 public:
     PromoVolumen(int minimoProductos, double porcentaje) : minimoProductos_(minimoProductos), porcentaje_(porcentaje) {
     }
 
     string nombre() const override {
-        return TextFormat("Volumen: %d+ productos", minimoProductos_);
+        return "Volumen: " + to_string(minimoProductos_) + "+ productos";
     }
 
     double descuento(const vector<Linea>& lineas) const override {
@@ -1186,8 +1183,6 @@ public:
     }
 };
 
-// ---------------------------- Cupones ----------------------------
-// El cliente escribe el código al pagar (no distingue mayúsculas). Cada tipo calcula su descuento.
 class Cupon {
 protected:
     string codigo_, descripcion_;
@@ -1214,7 +1209,6 @@ public:
 
     virtual double calcular(double neto) const = 0;
 
-    // Descuento real: 0 si no llega al mínimo, y nunca más que el neto
     double descuento(double neto) const {
         if (neto + 1e-9 < minimoCompra_)
             return 0;
@@ -1248,7 +1242,6 @@ public:
     }
 };
 
-// ---------------------------- Carrito ----------------------------
 class Carrito {
     vector<Linea> lineas_;
     vector<unique_ptr<Promocion>> promociones_;
@@ -1258,7 +1251,6 @@ public:
         promociones_.push_back(move(promo));
     }
 
-    // Devuelve cuántas unidades se agregaron realmente (respeta el stock disponible)
     int agregar(const Producto* producto, int modelo, int cantidad = 1) {
         cantidad = min(cantidad, producto->stock() - cantidadDe(producto));
         if (cantidad <= 0)
@@ -1272,7 +1264,6 @@ public:
         return cantidad;
     }
 
-    // Quita UNA unidad de la línea; si llega a 0 se elimina la línea
     void quitar(size_t indice) {
         if (indice < lineas_.size() && --lineas_[indice].cantidad <= 0)
             lineas_.erase(lineas_.begin() + indice);
@@ -1286,14 +1277,14 @@ public:
         return lineas_;
     }
 
-    int cantidad() const {  // total de unidades
+    int cantidad() const {
         int total = 0;
         for (auto& l : lineas_)
             total += l.cantidad;
         return total;
     }
 
-    int cantidadDe(const Producto* producto) const {  // unidades de un producto (todos sus modelos)
+    int cantidadDe(const Producto* producto) const {
         int total = 0;
         for (auto& l : lineas_)
             if (l.producto == producto)
@@ -1305,7 +1296,6 @@ public:
         return subtotalDe(lineas_);
     }
 
-    // Lista de (nombre de promoción, descuento) de las promociones que sí aplican
     vector<pair<string, double>> detalleDescuentos() const {
         vector<pair<string, double>> resultado;
         for (auto& promo : promociones_) {
@@ -1324,7 +1314,6 @@ public:
     }
 };
 
-// Registro de una compra ya pagada
 struct Pedido {
     string numero, fecha, cliente, documento, entrega, vendedor, pago, comprobante, cupon;
     double total = 0, comision = 0;
@@ -1332,7 +1321,7 @@ struct Pedido {
 };
 
 // =====================================================================================
-// 5. DOMINIO: TIENDA  (une todo: catálogo, equipo, carrito, pagos e inventario)
+// 5. TIENDA
 // =====================================================================================
 class Tienda {
     vector<unique_ptr<Producto>> catalogo_;
@@ -1347,7 +1336,6 @@ class Tienda {
     const Cupon* cuponAplicado_ = nullptr;
     int medioElegido_ = 0, comprobanteElegido_ = 0, envioElegido_ = 0, contadorPedidos_ = 0;
 
-    // Crea un producto de tipo T y lo agrega al catálogo
     template <class T, class... Args> void agregarAlCatalogo(Args&&... args) {
         catalogo_.push_back(make_unique<T>(forward<Args>(args)...));
     }
@@ -1359,7 +1347,6 @@ class Tienda {
         return resultado;
     }
 
-    // Quita los caracteres que romperían el archivo de inventario
     static string limpio(string texto) {
         for (char& c : texto)
             if (c == '|' || c == '\t' || c == '\n' || c == '\r')
@@ -1367,9 +1354,6 @@ class Tienda {
         return texto;
     }
 
-    // ---- Persistencia: img/inventario.dat ----
-    // Formato:  S|codigo|stock                       (stock de un producto del catálogo base)
-    //           P|codigo|nombre|marca|cat|precio|garantia|stock|modelos|detalle   (producto creado por el usuario)
     void guardarInventario() const {
         ofstream archivo("img/inventario.dat", ios::trunc);
         if (!archivo)
@@ -1412,18 +1396,15 @@ class Tienda {
 
                     if (!yaExiste && !nombre.empty() && !modelos.empty()) {
                         Ficha ficha{codigo, nombre, marca, atof(precio.c_str()), atoi(garantia.c_str()), atoi(stock.c_str()), modelos};
-                        catalogo_.push_back(make_unique<ProductoPersonalizado>(ficha, Clamp(atoi(categoria.c_str()), 0, 5), detalle));
+                        catalogo_.push_back(make_unique<ProductoPersonalizado>(ficha, limitar(atoi(categoria.c_str()), 0, 5), detalle));
                     }
                 }
             } catch (...) {
-                // ignora solo la fila dañada
             }
         }
     }
 
-    // ---- Carga inicial de datos de ejemplo ----
     void crearCatalogoBase() {
-        // Componentes
         agregarAlCatalogo<CPU>(Ficha{"CPU-01", "CPU", "Intel", 650, 24, 12, "Core i5-13400:1|Core i7-13700:1.45*|Core i9-13900:2"}, 65, 16, 24, 3.4);
         agregarAlCatalogo<CPU>(Ficha{"CPU-02", "CPU", "AMD", 620, 24, 10, "Ryzen 5 7600:1*|Ryzen 7 7800X3D:1.9"}, 65, 6, 12, 4.7);
         agregarAlCatalogo<GPU>(Ficha{"GPU-01", "GPU", "Nvidia", 1800, 24, 6, "RTX 4060:0.8|RTX 4070:1*|RTX 4080:1.7"}, 200, 12, 2.5, 5888);
@@ -1440,7 +1421,6 @@ class Tienda {
         agregarAlCatalogo<FuentePoder>(Ficha{"PSU-01", "Fuente de poder", "Corsair", 280, 36, 9, "550 W:0.8|650 W:1*|850 W:1.6"}, 650, "80 Plus Bronze");
         agregarAlCatalogo<Ventilador>(Ficha{"FAN-01", "Ventilador", "CoolerMaster", 45, 12, 25}, 4, 1800, 120);
 
-        // Accesorios
         agregarAlCatalogo<MemoriaFlash>(Ficha{"USB-01", "Memoria USB", "Kingston", 35, 12, 40, "32 GB:0.7|64 GB:1*|128 GB:1.8"}, "Universal", 64, "USB");
         agregarAlCatalogo<MemoriaFlash>(Ficha{"SD-01", "Memoria SD", "SanDisk", 40, 12, 30, "32 GB:0.7|64 GB:1*|128 GB:1.8"}, "Cámaras y celulares", 64, "SD");
         agregarAlCatalogo<PastaTermica>(Ficha{"TIM-01", "Pasta termica", "Arctic", 15, 6, 50, "4 g:0.8|8 g:1*|30 g:2.5"}, "CPU y GPU", 8);
@@ -1449,7 +1429,6 @@ class Tienda {
         agregarAlCatalogo<Cargador>(Ficha{"CHG-01", "Cargador tipo C", "Anker", 55, 12, 18, "20 W:0.7|45 W:1*|65 W:1.5"}, "Celulares y laptops", "USB-C", 45);
         agregarAlCatalogo<Cable>(Ficha{"SATA-01", "Extension SATA", "Genérico", 12, 3, 40, "0.5 m:1*|1 m:1.4"}, "Discos SATA", "SATA", 0.5);
 
-        // Periféricos
         agregarAlCatalogo<Mouse>(Ficha{"MOU-01", "Mouse inalambrico", "Logitech", 50, 12, 25, "Básico:0.8|Ergonómico:1*|Gamer RGB:1.8"}, "USB 2.4 GHz", true, false, 1600, false);
         agregarAlCatalogo<Mouse>(Ficha{"MOU-02", "Mouse con cable", "Redragon", 25, 12, 30, "Básico:0.8|Estándar:1*|Gamer:1.7"}, "USB", false, false, 3200, true);
         agregarAlCatalogo<Teclado>(Ficha{"TEC-01", "Teclado", "Redragon", 70, 12, 18, "Membrana:0.8|Mecánico:1.4*|Mecánico RGB:2"}, "USB", false, false, "Mecánico", true);
@@ -1458,23 +1437,19 @@ class Tienda {
         agregarAlCatalogo<Microfono>(Ficha{"MIC-01", "Microfono", "HyperX", 110, 12, 9, "Estándar:0.8|Condensador:1*|Pro:1.8"}, "USB", false, false, "Condensador");
         agregarAlCatalogo<AdaptadorInalambrico>(Ficha{"WIFI-01", "Adaptador WiFi", "TP-Link", 40, 12, 20, "WiFi 5:0.8|WiFi 6:1*"}, "USB", true, true, "WiFi + Bluetooth 5.0");
 
-        // Software
         agregarAlCatalogo<SistemaOperativo>(Ficha{"OS-01", "Windows (OS)", "Microsoft", 450, 0, 99, "Home:0.7|Pro:1*|Enterprise:1.6"}, true, 0, "64 bits");
         agregarAlCatalogo<Aplicacion>(Ficha{"APP-01", "Adobe", "Adobe", 300, 0, 99, "1 mes:0.2|12 meses:1*|24 meses:1.8"}, false, 12, "Diseño y edición");
         agregarAlCatalogo<Aplicacion>(Ficha{"APP-02", "Avast", "Avast", 90, 0, 99, "1 PC:0.6|3 PC:1*|5 PC:1.4"}, false, 12, "Antivirus");
         agregarAlCatalogo<Aplicacion>(Ficha{"APP-03", "Office", "Microsoft", 380, 0, 99, "Hogar y Estudiante:0.8|Hogar y Empresas:1*|Profesional:1.5"}, true, 0, "Ofimática");
 
-        // Equipos completos
         agregarAlCatalogo<Computadora>(Ficha{"PC-01", "Computadora", "HP", 2500, 12, 5, "Oficina:0.7|Hogar:1*|Gamer:1.9"}, "Core i5", "16 GB", "512 GB SSD", "ATX");
         agregarAlCatalogo<Laptop>(Ficha{"LAP-01", "Laptop", "Lenovo", 3200, 12, 6, "14 pulg Básica:0.7|15.6 pulg Estándar:1*|16 pulg Pro:1.7"}, "Ryzen 5", "16 GB", "512 GB SSD", 15.6, 60, false);
         agregarAlCatalogo<Impresora>(Ficha{"PRN-01", "Impresora", "Epson", 600, 6, 8, "Inyección de tinta:0.7|Multifuncional:1*|Láser:1.6"}, "Tinta continua", 15, true);
 
-        // Servicios
         agregarAlCatalogo<Mantenimiento>(Ficha{"SRV-01", "Mantenimiento", "TecnoStore", 80, 0, 99, "Básico:0.7|Completo:1*|Premium:1.6"}, "Limpieza y optimización", 3);
         agregarAlCatalogo<Garantia>(Ficha{"SRV-02", "Garantia", "TecnoStore", 150, 0, 99, "6 meses:0.6|12 meses:1*|24 meses:1.8"}, "Extensión de garantía", "gratuito");
         agregarAlCatalogo<Servicio>(Ficha{"SRV-03", "Armado de PC", "TecnoStore", 100, 0, 99, "Estándar:1*|Con pruebas:1.4"}, "Armado, cableado y pruebas");
 
-        // Ofertas y listas ampliadas de modelos
         for (auto& p : catalogo_) {
             if (p->nombre() == "Mouse inalambrico" || p->nombre() == "Teclado")
                 p->marcarOferta();
@@ -1521,10 +1496,13 @@ public:
         crearOpcionesDeCompra();
         crearPersonal();
         crearPromocionesYCupones();
-        cargarInventario();  // aplica stock guardado y productos creados por el usuario
+        cargarInventario();
     }
 
-    // ---------------- catálogo ----------------
+    size_t cantidadProductos() const {
+        return catalogo_.size();
+    }
+
     vector<const Producto*> productos() const {
         vector<const Producto*> resultado;
         for (auto& p : catalogo_)
@@ -1532,10 +1510,9 @@ public:
         return resultado;
     }
 
-    // Primer código libre con formato PRD-001, PRD-002...
     string siguienteCodigo() const {
         for (int n = 1; n < 10000; n++) {
-            string codigo = TextFormat("PRD-%03d", n);
+            string codigo = "PRD-" + ceros(n, 3);
             bool usado = false;
             for (const auto& p : catalogo_)
                 if (p->codigo() == codigo) {
@@ -1554,7 +1531,7 @@ public:
         for (const auto& p : catalogo_)
             if (p->codigo() == ficha.codigo)
                 return false;
-        catalogo_.push_back(make_unique<ProductoPersonalizado>(ficha, Clamp(categoria, 0, 5), move(detalle)));
+        catalogo_.push_back(make_unique<ProductoPersonalizado>(ficha, limitar(categoria, 0, 5), move(detalle)));
         guardarInventario();
         return true;
     }
@@ -1571,7 +1548,7 @@ public:
         return false;
     }
 
-    vector<string> marcas() const {  // marcas sin repetir, en orden de aparición
+    vector<string> marcas() const {
         vector<string> resultado;
         for (auto& p : catalogo_)
             if (find(resultado.begin(), resultado.end(), p->marca()) == resultado.end())
@@ -1579,7 +1556,6 @@ public:
         return resultado;
     }
 
-    // ---------------- personal ----------------
     vector<const Vendedor*> vendedores() const {
         vector<const Vendedor*> resultado;
         for (auto& trabajador : equipo_)
@@ -1604,7 +1580,6 @@ public:
         return carrito_;
     }
 
-    // ---------------- opciones de compra ----------------
     vector<string> nombresMedios() const {
         return nombresDe(mediosPago_);
     }
@@ -1653,8 +1628,6 @@ public:
         return *envios_[envioElegido_];
     }
 
-    // ---------------- cupones ----------------
-    // Devuelve "" si el cupón se aplicó; si no, el motivo del rechazo.
     string aplicarCupon(const string& texto) {
         string codigo = mayusc(texto);
         if (codigo.empty())
@@ -1678,14 +1651,12 @@ public:
         return cuponAplicado_;
     }
 
-    // ---------------- totales ----------------
     double descuentoCupon() const {
         if (!cuponAplicado_ || carrito_.cantidad() == 0)
             return 0;
         return cuponAplicado_->descuento(carrito_.subtotal() - carrito_.descuentos());
     }
 
-    // Total antes del recargo del medio de pago: subtotal - promociones - cupón + envío
     double base() const {
         double envio = carrito_.cantidad() ? envios_[envioElegido_]->costo() : 0;
         return carrito_.subtotal() - carrito_.descuentos() - descuentoCupon() + envio;
@@ -1699,8 +1670,6 @@ public:
         return base() + recargo();
     }
 
-    // ---------------- pagar ----------------
-    // Registra el pedido, descuenta stock, vacía el carrito y guarda el inventario.
     Pedido pagar(const Cliente& cliente, const string& ruc, const string& razonSocial, const string& direccion,
                  const string& datoPago, int indiceVendedor) {
         Pedido pedido;
@@ -1712,8 +1681,8 @@ public:
 
         time_t ahora = time(nullptr);
         tm* fecha = localtime(&ahora);
-        pedido.numero = comprobante.serie() + "-" + TextFormat("%06d", ++contadorPedidos_);
-        pedido.fecha = TextFormat("%02d/%02d/%04d", fecha->tm_mday, fecha->tm_mon + 1, fecha->tm_year + 1900);
+        pedido.numero = comprobante.serie() + "-" + ceros(++contadorPedidos_, 6);
+        pedido.fecha = ceros(fecha->tm_mday, 2) + "/" + ceros(fecha->tm_mon + 1, 2) + "/" + to_string(fecha->tm_year + 1900);
         pedido.cliente = cliente.nombreCompleto();
         pedido.documento = comprobante.pideRUC() ? "RUC " + ruc + " · " + razonSocial : "DNI " + cliente.datos().dni;
         pedido.entrega = envio.nombre() + (envio.pideDireccion() ? " · " + direccion : string());
@@ -1725,8 +1694,8 @@ public:
         pedido.pago = mediosPago_[medioElegido_]->resumen(datoPago, pedido.total);
 
         for (auto& linea : carrito_.lineas()) {
-            pedido.items.push_back(TextFormat("%d× %s %s", linea.cantidad, linea.producto->nombre().c_str(),
-                                              linea.producto->modelos()[(size_t)linea.modelo].nombre.c_str()));
+            pedido.items.push_back(to_string(linea.cantidad) + "× " + linea.producto->nombre() + " " +
+                                   linea.producto->modelos()[(size_t)linea.modelo].nombre);
             for (auto& p : catalogo_)
                 if (p.get() == linea.producto)
                     p->quitarStock(linea.cantidad);
@@ -1741,31 +1710,29 @@ public:
 };
 
 // =====================================================================================
-// 6. INTERFAZ: ayudas de dibujo (raylib) - estilo "vidrio"
+// 6. INTERFAZ (raylib)
 // =====================================================================================
 
-// ---- Paleta de colores ----
-static const Color C_BG{247, 248, 252, 255};         // fondo
-static const Color C_TINTA{31, 39, 97, 255};         // texto principal
-static const Color C_MUTED{108, 116, 156, 255};      // texto secundario
-static const Color C_SUAVE{234, 241, 253, 255};      // fondo suave / hover
-static const Color C_LINEA{201, 220, 250, 255};      // bordes
-static const Color C_VIDRIO{255, 255, 255, 170};     // paneles translúcidos
-static const Color C_MODAL{255, 255, 255, 255};      // ventanas emergentes
-static const Color C_OK{22, 163, 98, 255};           // verde
-static const Color C_PELIGRO{225, 64, 64, 255};      // rojo
-static const Color C_PRIM{16, 28, 120, 255};         // azul marino (color principal)
-static const Color C_ACENTO{245, 166, 35, 255};      // naranja
-static const Color C_AVISO{217, 119, 6, 255};        // ámbar
+static const Color C_BG{247, 248, 252, 255};
+static const Color C_TINTA{31, 39, 97, 255};
+static const Color C_MUTED{108, 116, 156, 255};
+static const Color C_SUAVE{234, 241, 253, 255};
+static const Color C_LINEA{201, 220, 250, 255};
+static const Color C_VIDRIO{255, 255, 255, 170};
+static const Color C_MODAL{255, 255, 255, 255};
+static const Color C_OK{22, 163, 98, 255};
+static const Color C_PELIGRO{225, 64, 64, 255};
+static const Color C_PRIM{16, 28, 120, 255};
+static const Color C_ACENTO{245, 166, 35, 255};
+static const Color C_AVISO{217, 119, 6, 255};
 
 static Font FUENTE;
-static unordered_map<string, Texture2D> TEXTURAS;  // caché de imágenes ya cargadas
+static unordered_map<string, Texture2D> TEXTURAS;
 
 static Rectangle R(float x, float y, float ancho, float alto) {
     return Rectangle{x, y, ancho, alto};
 }
 
-// Busca una fuente del sistema con soporte para tildes y ñ (ASCII + Latin-1)
 static void cargarFuente() {
     const char* rutas[] = {"C:/Windows/Fonts/segoeui.ttf",
                            "C:/Windows/Fonts/arial.ttf",
@@ -1791,7 +1758,6 @@ static void cargarFuente() {
     }
 }
 
-// Carga perezosa de imágenes; devuelve nullptr si el archivo no existe
 static const Texture2D* textura(const string& ruta) {
     auto it = TEXTURAS.find(ruta);
     if (it == TEXTURAS.end()) {
@@ -1806,19 +1772,16 @@ static const Texture2D* textura(const string& ruta) {
     return it->second.id ? &it->second : nullptr;
 }
 
-// Mezcla dos colores (t = 0 -> a, t = 1 -> b)
 static Color Mezcla(Color a, Color b, float t) {
     return Color{(unsigned char)(a.r + (b.r - a.r) * t), (unsigned char)(a.g + (b.g - a.g) * t),
                  (unsigned char)(a.b + (b.b - a.b) * t), (unsigned char)(a.a + (b.a - a.a) * t)};
 }
 
-// Aplica transparencia a un color (alfa 0..1)
 static Color Al(Color color, float alfa) {
     color.a = (unsigned char)(color.a * Clamp(alfa, 0.0f, 1.0f));
     return color;
 }
 
-// Dibuja una imagen centrada dentro del área, sin deformarla. Devuelve false si no existe.
 static bool imagen(const string& ruta, Rectangle area, float alfa = 1.0f) {
     const Texture2D* tex = textura(ruta);
     if (!tex)
@@ -1830,7 +1793,6 @@ static bool imagen(const string& ruta, Rectangle area, float alfa = 1.0f) {
     return true;
 }
 
-// ---- Texto ----
 static void Texto(const string& s, float x, float y, float tam, Color color, float espaciado = 0.5f) {
     DrawTextEx(FUENTE, s.c_str(), Vector2{x, y}, tam, espaciado, color);
 }
@@ -1847,7 +1809,6 @@ static void TextoDer(const string& s, float xDerecha, float y, float tam, Color 
     Texto(s, xDerecha - Ancho(s, tam), y, tam, color);
 }
 
-// Recorta el texto con ".." si no cabe en el ancho máximo (respeta caracteres UTF-8)
 static string Ajustar(string s, float tam, float anchoMax) {
     if (Ancho(s, tam) <= anchoMax)
         return s;
@@ -1860,7 +1821,6 @@ static string Ajustar(string s, float tam, float anchoMax) {
     return s + "..";
 }
 
-// ---- Envoltorios para funciones de raylib que cambiaron en la versión 5.5 ----
 static void LineasR(Rectangle r, float redondeo, int segmentos, float grosor, Color color) {
 #if defined(RAYLIB_VERSION_MAJOR) && (RAYLIB_VERSION_MAJOR * 100 + RAYLIB_VERSION_MINOR >= 505)
     DrawRectangleRoundedLinesEx(r, redondeo, segmentos, grosor, color);
@@ -1877,7 +1837,6 @@ static void CirculoDeg(Vector2 centro, float radio, Color interior, Color exteri
 #endif
 }
 
-// ---- Figuras con estilo ----
 static void Caja(Rectangle r, float redondeo, Color fondo, Color borde) {
     DrawRectangleRounded(r, redondeo, 12, fondo);
     LineasR(r, redondeo, 12, 1, borde);
@@ -1889,7 +1848,6 @@ static void Sombra(Rectangle r, float redondeo, float intensidad) {
                              Al(Color{60, 80, 150, 255}, 0.035f * intensidad));
 }
 
-// Panel blanco translúcido con borde y brillo superior
 static void Vidrio(Rectangle r, float redondeo, float intensidadSombra = 1.0f, Color tinte = C_VIDRIO) {
     Sombra(r, redondeo, intensidadSombra);
     DrawRectangleRounded(r, redondeo, 12, tinte);
@@ -1898,7 +1856,6 @@ static void Vidrio(Rectangle r, float redondeo, float intensidadSombra = 1.0f, C
     DrawRectangle((int)(r.x + radio), (int)r.y + 1, (int)(r.width - 2 * radio), 1, WHITE);
 }
 
-// Degradado con esquinas redondeadas (horizontal = true: de izquierda a derecha)
 static void Deg(Rectangle r, float radio, Color colorA, Color colorB, bool horizontal) {
     float tapa = radio * 2 + 8;
     Rectangle tapaA = horizontal ? R(r.x, r.y, tapa, r.height) : R(r.x, r.y, r.width, tapa);
@@ -1912,12 +1869,10 @@ static void Deg(Rectangle r, float radio, Color colorA, Color colorB, bool horiz
         DrawRectangleGradientV((int)r.x, (int)(r.y + tapa / 2), (int)r.width, (int)(r.height - tapa), colorA, colorB);
 }
 
-// Cada marca sin logo recibe un color propio, calculado a partir de su nombre
 static Color colorMarca(const string& marca) {
     return ColorFromHSV((float)(hash<string>{}(marca) % 360), 0.50f, 0.78f);
 }
 
-// Etiqueta de marca: usa img/marcas/<marca>.png si existe; si no, un recuadro de color con el nombre
 static void Marca(const string& marca, Rectangle r, float alfa = 1.0f) {
     string rutaLogo = "img/marcas/" + marca + ".png";
     if (textura(rutaLogo)) {
@@ -1933,13 +1888,6 @@ static void Marca(const string& marca, Rectangle r, float alfa = 1.0f) {
     TextoCentro(marca, r, tam, Al(WHITE, alfa));
 }
 
-// =====================================================================================
-// 7. INTERFAZ: ilustraciones de productos
-//    Si no existe img/productos/<codigo>.png, se dibuja una ilustración simple del producto.
-// =====================================================================================
-
-// ---- Clasificación: a qué ilustración corresponde cada producto ----
-// {palabra clave, ¿solo palabra completa?, tipo de dibujo}. EL ORDEN IMPORTA: gana la primera coincidencia.
 struct Regla {
     const char* palabraClave;
     bool palabraCompleta;
@@ -2007,7 +1955,6 @@ static const Regla REGLAS[] = {{"wifi", 0, "wifi"},
                                {"pc", 1, "pc"},
                                {"gabinete", 0, "pc"}};
 
-// ¿El texto contiene la palabra completa (sin letras pegadas a los lados)?
 static bool contienePalabra(const string& texto, const string& palabra) {
     for (size_t i = 0; (i = texto.find(palabra, i)) != string::npos; i++) {
         size_t fin = i + palabra.size();
@@ -2029,14 +1976,11 @@ static string clasificar(const string& texto) {
     return "";
 }
 
-// ---- Colores propios de las ilustraciones ----
 namespace Ilus {
 static const Color tinta{53, 66, 120, 255}, brillo{88, 112, 190, 255}, claro{221, 230, 250, 255}, oro{245, 190, 60, 255},
     oscuro{34, 44, 92, 255}, blanco{255, 255, 255, 255}, metal{170, 180, 200, 255}, celeste{190, 205, 240, 255};
-}  // namespace Ilus
+}
 
-// ---- Lienzo: herramientas de dibujo con coordenadas RELATIVAS AL CENTRO y escaladas ----
-// Todas las medidas (x, y, ancho, alto) se dan respecto al centro del área; "escala" las adapta al tamaño real.
 struct Lienzo {
     Rectangle area;
     Vector2 centro;
@@ -2047,7 +1991,6 @@ struct Lienzo {
         : area(a), centro{a.x + a.width / 2, a.y + a.height / 2}, escala(min(a.width / 300.0f, a.height / 180.0f)), acento(ac) {
     }
 
-    // Rectángulo redondeado
     void rect(float x, float y, float ancho, float alto, float redondeo, Color color) const {
         DrawRectangleRounded(R(centro.x + x * escala, centro.y + y * escala, ancho * escala, alto * escala), redondeo, 8, color);
     }
@@ -2056,7 +1999,7 @@ struct Lienzo {
         DrawCircleV(Vector2{centro.x + x * escala, centro.y + y * escala}, radio * escala, color);
     }
 
-    void aro(float x, float y, float radio, Color color) const {  // circunferencia (solo borde)
+    void aro(float x, float y, float radio, Color color) const {
         DrawCircleLinesV(Vector2{centro.x + x * escala, centro.y + y * escala}, radio * escala, color);
     }
 
@@ -2065,12 +2008,10 @@ struct Lienzo {
                    grosor * escala, color);
     }
 
-    // Texto centrado dentro de un rectángulo relativo
     void texto(const string& t, float x, float y, float ancho, float alto, float tam, Color color) const {
         TextoCentro(t, R(centro.x + x * escala, centro.y + y * escala, ancho * escala, alto * escala), tam * escala, color);
     }
 
-    // Aspas que giran con el tiempo (ventiladores)
     void aspas(float x, float y, float radio, int cantidad, Color color, float grosor) const {
         float rotacion = (float)GetTime() * 2.5f;
         for (int i = 0; i < cantidad; i++) {
@@ -2080,20 +2021,18 @@ struct Lienzo {
         }
     }
 
-    // Caja de software con lomo lateral
     void cajaSoftware(Color color) const {
         rect(-48, -66, 96, 132, 0.06f, color);
         rect(-48, -66, 14, 132, 0.4f, Mezcla(color, Color{0, 0, 0, 255}, 0.25f));
     }
 };
 
-// ---- Una función de dibujo por tipo de producto ----
 static void dibujarGPU(const Lienzo& L) {
     using namespace Ilus;
     for (int i = 0; i < 10; i++)
-        L.rect(-60 + i * 9.0f, 28, 5, 11, 0.2f, oro);  // contactos dorados
-    L.rect(-102, -40, 8, 80, 0.3f, claro);             // bracket
-    L.rect(-95, -34, 190, 64, 0.1f, tinta);            // cuerpo
+        L.rect(-60 + i * 9.0f, 28, 5, 11, 0.2f, oro);
+    L.rect(-102, -40, 8, 80, 0.3f, claro);
+    L.rect(-95, -34, 190, 64, 0.1f, tinta);
     L.rect(-95, -34, 190, 8, 0.5f, brillo);
     for (float xVentilador : {-48.0f, 18.0f}) {
         L.circulo(xVentilador, 0, 27, oscuro);
@@ -2107,7 +2046,7 @@ static void dibujarGPU(const Lienzo& L) {
 
 static void dibujarCPU(const Lienzo& L) {
     using namespace Ilus;
-    for (int i = 0; i < 8; i++) {  // pines en los 4 lados
+    for (int i = 0; i < 8; i++) {
         L.rect(-42 + i * 12.0f, -57, 5, 12, 0.2f, oro);
         L.rect(-42 + i * 12.0f, 45, 5, 12, 0.2f, oro);
         L.rect(-57, -42 + i * 12.0f, 12, 5, 0.2f, oro);
@@ -2117,7 +2056,7 @@ static void dibujarCPU(const Lienzo& L) {
     L.rect(-34, -34, 68, 68, 0.08f, tinta);
     DrawTriangle(Vector2{L.centro.x - 44 * L.escala, L.centro.y - 44 * L.escala},
                  Vector2{L.centro.x - 44 * L.escala, L.centro.y - 32 * L.escala},
-                 Vector2{L.centro.x - 32 * L.escala, L.centro.y - 44 * L.escala}, oro);  // marca del pin 1
+                 Vector2{L.centro.x - 32 * L.escala, L.centro.y - 44 * L.escala}, oro);
     L.texto("CPU", -34, -34, 68, 68, 22, blanco);
 }
 
@@ -2126,11 +2065,11 @@ static void dibujarRAM(const Lienzo& L) {
     L.rect(-98, -28, 196, 56, 0.08f, tinta);
     L.rect(-98, -28, 196, 13, 0.5f, brillo);
     L.texto("RAM", -98, -28, 196, 13, 10, blanco);
-    for (int i = 0; i < 6; i++) {  // chips
+    for (int i = 0; i < 6; i++) {
         L.rect(-86 + i * 28.0f, -8, 22, 26, 0.12f, oscuro);
         L.linea(-82 + i * 28.0f, -2, -68 + i * 28.0f, -2, 2, brillo);
     }
-    for (int i = 0; i < 17; i++)  // contactos (con la muesca en el centro)
+    for (int i = 0; i < 17; i++)
         if (i != 8)
             L.rect(-90 + i * 11.0f, 28, 7, 11, 0.1f, oro);
 }
@@ -2163,15 +2102,15 @@ static void dibujarHDD(const Lienzo& L) {
     using namespace Ilus;
     L.rect(-52, -62, 104, 124, 0.08f, tinta);
     L.rect(-47, -57, 94, 114, 0.06f, claro);
-    L.circulo(0, -10, 38, tinta);  // plato
+    L.circulo(0, -10, 38, tinta);
     L.circulo(0, -10, 34, Color{200, 210, 235, 255});
     L.aro(0, -10, 24, brillo);
     L.aro(0, -10, 16, brillo);
     L.circulo(0, -10, 8, claro);
     L.circulo(0, -10, 3, tinta);
-    L.linea(34, 36, 6, -4, 5, tinta);  // brazo lector
+    L.linea(34, 36, 6, -4, 5, tinta);
     L.circulo(34, 36, 6, tinta);
-    for (float x : {-41.0f, 41.0f})  // tornillos
+    for (float x : {-41.0f, 41.0f})
         for (float y : {-51.0f, 51.0f})
             L.circulo(x, y, 3, brillo);
     L.rect(-26, 44, 52, 9, 0.3f, tinta);
@@ -2179,15 +2118,14 @@ static void dibujarHDD(const Lienzo& L) {
         L.rect(-22 + i * 8.0f, 46, 4, 5, 0.2f, oro);
 }
 
-// Placa madre; si es "armado de PC" se le agrega un destornillador
 static void dibujarPlaca(const Lienzo& L, bool conDestornillador) {
     using namespace Ilus;
     L.rect(-72, -68, 144, 136, 0.06f, tinta);
-    L.rect(-56, -52, 50, 50, 0.08f, claro);  // socket
+    L.rect(-56, -52, 50, 50, 0.08f, claro);
     L.rect(-48, -44, 34, 34, 0.06f, brillo);
-    for (int i = 0; i < 4; i++)  // ranuras RAM
+    for (int i = 0; i < 4; i++)
         L.rect(8 + i * 11.0f, -56, 6, 62, 0.3f, claro);
-    L.rect(-56, 20, 104, 8, 0.3f, claro);  // ranuras PCIe
+    L.rect(-56, 20, 104, 8, 0.3f, claro);
     L.rect(-56, 38, 70, 8, 0.3f, claro);
     L.rect(26, 40, 26, 22, 0.12f, brillo);
     for (int i = 0; i < 3; i++)
@@ -2202,7 +2140,7 @@ static void dibujarPlaca(const Lienzo& L, bool conDestornillador) {
 
 static void dibujarFuente(const Lienzo& L) {
     using namespace Ilus;
-    for (float y : {-18.0f, 2.0f, 22.0f})  // cables
+    for (float y : {-18.0f, 2.0f, 22.0f})
         L.linea(72, y, 96, y, 6, oscuro);
     L.rect(92, -24, 9, 12, 0.2f, oro);
     L.rect(92, -4, 9, 12, 0.2f, oro);
@@ -2212,7 +2150,7 @@ static void dibujarFuente(const Lienzo& L) {
     L.circulo(-22, 0, 7, claro);
     L.aro(-22, 0, 36, claro);
     L.texto("PSU", 18, -34, 50, 20, 15, blanco);
-    L.linea(48, -6, 38, 10, 3, oro);  // rayo
+    L.linea(48, -6, 38, 10, 3, oro);
     L.linea(38, 10, 52, 10, 3, oro);
     L.linea(52, 10, 42, 30, 3, oro);
 }
@@ -2251,7 +2189,7 @@ static void dibujarSD(const Lienzo& L) {
     L.rect(-18, 20, 36, 5, 0.5f, L.acento);
 }
 
-static void dibujarPasta(const Lienzo& L) {  // jeringa de pasta térmica
+static void dibujarPasta(const Lienzo& L) {
     using namespace Ilus;
     L.rect(-60, -15, 100, 30, 0.25f, tinta);
     L.rect(-57, -12, 94, 24, 0.25f, claro);
@@ -2267,7 +2205,6 @@ static void dibujarPasta(const Lienzo& L) {  // jeringa de pasta térmica
     L.circulo(-92, 12, 4, L.acento);
 }
 
-// Mouse; con cable si la descripción lo menciona, con ondas si es inalámbrico
 static void dibujarMouse(const Lienzo& L, const string& descripcion) {
     using namespace Ilus;
     bool inalambrico = descripcion.find("inal") != string::npos;
@@ -2297,16 +2234,16 @@ static void dibujarTeclado(const Lienzo& L) {
         for (int col = 0; col < 12; col++)
             DrawRectangleRounded(R(base.x + (8 + col * 14) * e, base.y + (9 + fila * 18) * e, 10 * e, 11 * e), 0.18f, 3,
                                  (fila + col) % 5 == 0 ? brillo : claro);
-    DrawRectangleRounded(R(base.x + 50 * e, base.y + 62 * e, 82 * e, 7 * e), 0.4f, 4, brillo);  // barra espaciadora
+    DrawRectangleRounded(R(base.x + 50 * e, base.y + 62 * e, 82 * e, 7 * e), 0.4f, 4, brillo);
 }
 
 static void dibujarParlante(const Lienzo& L) {
     using namespace Ilus;
     L.rect(-46, -64, 92, 128, 0.16f, tinta);
-    L.circulo(0, -38, 13, oscuro);  // tweeter
+    L.circulo(0, -38, 13, oscuro);
     L.circulo(0, -38, 8, brillo);
     L.circulo(0, -38, 3, claro);
-    L.circulo(0, 16, 34, oscuro);  // woofer
+    L.circulo(0, 16, 34, oscuro);
     L.aro(0, 16, 34, claro);
     L.circulo(0, 16, 24, brillo);
     L.circulo(0, 16, 10, oscuro);
@@ -2342,7 +2279,7 @@ static void dibujarWifi(const Lienzo& L) {
     L.rect(14, -5, 34, 14, 0.1f, tinta);
     L.circulo(-58, 2, 3, C_OK);
     L.texto("WiFi", -66, -12, 70, 28, 14, blanco);
-    for (int k = 0; k < 3; k++)  // ondas
+    for (int k = 0; k < 3; k++)
         DrawRing(Vector2{L.centro.x - 30 * L.escala, L.centro.y - 22 * L.escala}, (10 + k * 10) * L.escala,
                  (14 + k * 10) * L.escala, 225, 315, 16, k == 0 ? L.acento : brillo);
     L.circulo(-30, -22, 4, L.acento);
@@ -2354,7 +2291,7 @@ static void dibujarAdaptador(const Lienzo& L) {
     L.texto("HDMI", -98, -16, 46, 32, 11, tinta);
     L.rect(-52, -20, 58, 40, 0.15f, tinta);
     L.rect(6, -20, 74, 40, 0.12f, brillo);
-    for (int i = 0; i < 5; i++)  // pines VGA
+    for (int i = 0; i < 5; i++)
         L.circulo(22 + i * 11.0f, -6, 2.5f, claro);
     for (int i = 0; i < 4; i++)
         L.circulo(27 + i * 11.0f, 7, 2.5f, claro);
@@ -2362,7 +2299,7 @@ static void dibujarAdaptador(const Lienzo& L) {
     L.linea(80, 8, 96, 8, 3, metal);
 }
 
-static void dibujarCable(const Lienzo& L) {  // cable enrollado con conectores
+static void dibujarCable(const Lienzo& L) {
     using namespace Ilus;
     float e = L.escala, radio = 34 * e;
     Rectangle a = L.area;
@@ -2379,7 +2316,7 @@ static void dibujarCable(const Lienzo& L) {  // cable enrollado con conectores
 
 static void dibujarCargador(const Lienzo& L) {
     using namespace Ilus;
-    L.rect(-22, -64, 9, 22, 0.2f, metal);  // clavijas
+    L.rect(-22, -64, 9, 22, 0.2f, metal);
     L.rect(13, -64, 9, 22, 0.2f, metal);
     L.rect(-40, -44, 80, 90, 0.1f, tinta);
     L.rect(-36, -40, 72, 82, 0.08f, claro);
@@ -2448,28 +2385,28 @@ static void dibujarMonitor(const Lienzo& L) {
     L.rect(-60, -24, 110, 6, 0.5f, celeste);
     L.rect(-60, -10, 50, 34, 0.06f, brillo);
     L.circulo(-35, 7, 8, L.acento);
-    L.rect(-10, 46, 20, 16, 0.1f, tinta);  // pie
+    L.rect(-10, 46, 20, 16, 0.1f, tinta);
     L.rect(-36, 60, 72, 8, 0.4f, tinta);
 }
 
 static void dibujarImpresora(const Lienzo& L) {
     using namespace Ilus;
-    L.rect(-41, -62, 82, 48, 0.04f, celeste);  // hoja de arriba
+    L.rect(-41, -62, 82, 48, 0.04f, celeste);
     L.rect(-39, -60, 78, 46, 0.04f, blanco);
     L.linea(-28, -48, 28, -48, 2, claro);
     L.linea(-28, -38, 28, -38, 2, claro);
     L.linea(-28, -28, 10, -28, 2, claro);
-    L.rect(-76, -20, 152, 66, 0.12f, tinta);  // cuerpo
+    L.rect(-76, -20, 152, 66, 0.12f, tinta);
     L.rect(-76, -20, 152, 14, 0.4f, brillo);
     L.rect(-52, 26, 104, 6, 0.4f, oscuro);
     L.rect(-62, 0, 44, 8, 0.4f, brillo);
     L.circulo(60, 4, 4, C_OK);
-    L.rect(-42, 28, 84, 34, 0.03f, blanco);  // hoja de salida
+    L.rect(-42, 28, 84, 34, 0.03f, blanco);
     L.linea(-30, 40, 30, 40, 2, claro);
     L.linea(-30, 50, 14, 50, 2, claro);
 }
 
-static void dibujarComputadora(const Lienzo& L) {  // torre + monitor
+static void dibujarComputadora(const Lienzo& L) {
     using namespace Ilus;
     L.rect(-92, -60, 52, 120, 0.1f, tinta);
     L.rect(-86, -30, 40, 60, 0.08f, oscuro);
@@ -2489,22 +2426,22 @@ static void dibujarComputadora(const Lienzo& L) {  // torre + monitor
     L.rect(8, 44, 48, 8, 0.4f, tinta);
 }
 
-static void dibujarMantenimiento(const Lienzo& L) {  // engranaje y llave
+static void dibujarMantenimiento(const Lienzo& L) {
     using namespace Ilus;
     float e = L.escala;
-    for (int i = 0; i < 8; i++)  // dientes del engranaje
+    for (int i = 0; i < 8; i++)
         DrawRectanglePro(R(L.centro.x - 10 * e + cosf(i * 45 * DEG2RAD) * 34 * e, L.centro.y + sinf(i * 45 * DEG2RAD) * 34 * e,
                            16 * e, 14 * e),
                          Vector2{8 * e, 7 * e}, (float)(i * 45), tinta);
     L.circulo(-10, 0, 30, tinta);
     L.circulo(-10, 0, 12, claro);
     L.circulo(-10, 0, 5, L.acento);
-    L.linea(28, 44, 68, -4, 10, brillo);  // llave
+    L.linea(28, 44, 68, -4, 10, brillo);
     L.circulo(72, -12, 13, brillo);
     L.circulo(77, -19, 6, claro);
 }
 
-static void dibujarGarantia(const Lienzo& L) {  // escudo con visto
+static void dibujarGarantia(const Lienzo& L) {
     using namespace Ilus;
     float e = L.escala;
     L.rect(-44, -52, 88, 64, 0.08f, tinta);
@@ -2521,19 +2458,16 @@ static void dibujarGenerico(const Lienzo& L) {
     L.circulo(0, 0, 10, L.acento);
 }
 
-// Punto de entrada: foto del producto si existe; si no, la ilustración que corresponda a su tipo.
 static void arte(const Producto* producto, Rectangle area, Color acento) {
     if (imagen("img/productos/" + producto->codigo() + ".png", area))
         return;
 
     Lienzo L(area, acento);
 
-    // Halo y sombra de fondo
     CirculoDeg(L.centro, min(area.width, area.height) * 0.48f, Al(acento, 0.10f), Al(acento, 0.015f));
     DrawEllipse((int)L.centro.x, (int)(L.centro.y + 68 * L.escala), (int)(72 * L.escala), (int)(6 * L.escala),
                 Al(Ilus::tinta, 0.10f));
 
-    // Decide el tipo: primero por nombre; si no, por nombre + detalle; si no, por categoría
     string descripcion = minusc(producto->nombre() + " " + producto->detalle());
     string tipo = clasificar(minusc(producto->nombre()));
     if (tipo.empty())
@@ -2613,15 +2547,10 @@ static void arte(const Producto* producto, Rectangle area, Color acento) {
         dibujarGenerico(L);
 }
 
-// =====================================================================================
-// 8. INTERFAZ: elementos y pantallas
-// =====================================================================================
-
-// ---- Elementos de interfaz (abstracción + herencia + polimorfismo) ----
 class ElementoUI {
 protected:
     Rectangle rect_{};
-    float hover_ = 0;  // 0..1, animación suave al pasar el mouse
+    float hover_ = 0;
 
 public:
     virtual ~ElementoUI() = default;
@@ -2641,7 +2570,6 @@ public:
     virtual void dibujar(bool conFoco) const = 0;
 };
 
-// Cuadro de texto. Modos: 0 = cualquier texto, 1 = solo dígitos, 2 = decimal (dígitos y punto)
 class Campo : public ElementoUI {
     size_t maxCaracteres_;
     int modo_;
@@ -2660,11 +2588,11 @@ public:
         if (!permitido || texto.size() >= maxCaracteres_)
             return;
         int bytes = 0;
-        texto += CodepointToUTF8(caracter, &bytes);  // admite ñ y tildes (UTF-8)
+        texto += CodepointToUTF8(caracter, &bytes);
     }
 
     void borrar() {
-        while (!texto.empty() && ((unsigned char)texto.back() & 0xC0) == 0x80)  // bytes de continuación UTF-8
+        while (!texto.empty() && ((unsigned char)texto.back() & 0xC0) == 0x80)
             texto.pop_back();
         if (!texto.empty())
             texto.pop_back();
@@ -2685,7 +2613,7 @@ public:
         else
             Texto(visible, rect_.x + 14, yTexto, 15, C_TINTA);
 
-        bool cursorVisible = conFoco && fmod(GetTime(), 1.0) < 0.5;  // cursor parpadeante
+        bool cursorVisible = conFoco && fmod(GetTime(), 1.0) < 0.5;
         if (cursorVisible)
             DrawRectangle((int)(rect_.x + 15 + (texto.empty() ? 0 : Ancho(visible, 15))), (int)(rect_.y + 10), 2,
                           (int)rect_.height - 20, C_PRIM);
@@ -2694,67 +2622,169 @@ public:
     }
 };
 
-// ---- Interfaz: ventana principal, pantallas y capas (carrito, checkout, detalle) ----
+static const Color ACENTOS[6] = {{99, 102, 241, 255}, {236, 72, 153, 255}, {16, 185, 129, 255},
+                                 {245, 158, 11, 255}, {14, 165, 233, 255}, {244, 63, 94, 255}};
+
+class Pantalla {
+public:
+    virtual ~Pantalla() = default;
+    virtual float dibujar(float ox, float cw, float y) = 0;
+};
+
+class PantallaNosotros : public Pantalla {
+    Tienda& tienda_;
+
+public:
+    explicit PantallaNosotros(Tienda& tienda) : tienda_(tienda) {
+    }
+
+    float dibujar(float ox, float cw, float y) override {
+        Texto("Sobre TecnoStore", ox, y, 30, C_PRIM);
+        y += 56;
+
+        Rectangle r = R(ox, y, cw, 96);
+        Vidrio(r, 0.08f, 0.5f);
+        Texto("Tienda de computadoras: hardware, accesorios, periféricos, software, equipos completos y servicio técnico.",
+              r.x + 24, r.y + 18, 16, C_TINTA);
+        Texto("Horario: Lun a Sáb 9:00 - 20:00  ·  Tel. 951 000 000  ·  ventas@tecnostore.pe  ·  Pagos: Efectivo, Tarjeta, Yape y Plin",
+              r.x + 24, r.y + 54, 13, C_MUTED);
+        y += 126;
+
+        y = dibujarEquipo(ox, cw, y);
+        return dibujarProveedores(ox, cw, y);
+    }
+
+private:
+    float dibujarEquipo(float ox, float cw, float y) {
+        Texto("Nuestro equipo", ox, y, 22, C_TINTA);
+        y += 42;
+
+        const auto& equipo = tienda_.equipo();
+        int cantidad = (int)equipo.size();
+        int columnas = max(2, min(cantidad, (int)((cw + 16) / 236)));
+        float ancho = (cw - (columnas - 1) * 16) / columnas;
+
+        for (int i = 0; i < cantidad; i++) {
+            const Trabajador& t = *equipo[(size_t)i];
+            Rectangle c = R(ox + (i % columnas) * (ancho + 16), y + (i / columnas) * 120.0f, ancho, 104);
+            Vidrio(c, 0.1f, 0.4f);
+            DrawCircleV(Vector2{c.x + 34, c.y + 38}, 20, Al(ACENTOS[i % 6], 0.25f));
+            TextoCentro(t.datos().nombres.substr(0, 1), R(c.x + 14, c.y + 18, 40, 40), 18, C_TINTA);
+            Texto(Ajustar(t.nombreCompleto(), 14, ancho - 76), c.x + 64, c.y + 22, 14, C_TINTA);
+            Texto(Ajustar(t.codigo(), 12, ancho - 76), c.x + 64, c.y + 44, 12, C_MUTED);
+            Texto(Ajustar(t.rol(), 12, ancho - 28), c.x + 16, c.y + 76, 12, ACENTOS[i % 6]);
+        }
+        return y + (cantidad + columnas - 1) / columnas * 120.0f + 18;
+    }
+
+    float dibujarProveedores(float ox, float cw, float y) {
+        Texto("Proveedores", ox, y, 22, C_TINTA);
+        y += 42;
+
+        const auto& proveedores = tienda_.proveedores();
+        float ancho = (cw - 16) / 2;
+
+        for (int i = 0; i < (int)proveedores.size(); i++) {
+            const Proveedor& p = *proveedores[(size_t)i];
+            Rectangle c = R(ox + i * (ancho + 16), y, ancho, 80);
+            Vidrio(c, 0.1f, 0.4f);
+            Texto(p.razon(), c.x + 20, c.y + 16, 16, C_TINTA);
+            Texto(Ajustar(p.detalle() + " · " + p.rol(), 12, ancho - 40), c.x + 20, c.y + 44, 12, C_MUTED);
+        }
+        return y + 80;
+    }
+};
+
+class PantallaPedidos : public Pantalla {
+    Tienda& tienda_;
+
+public:
+    explicit PantallaPedidos(Tienda& tienda) : tienda_(tienda) {
+    }
+
+    float dibujar(float ox, float cw, float y) override {
+        auto& lista = tienda_.pedidos();
+        Texto("Mis pedidos", ox, y, 30, C_PRIM);
+        Texto(to_string(lista.size()) + " compras realizadas", ox + 1, y + 40, 13, C_MUTED);
+        y += 74;
+        if (lista.empty()) {
+            Vidrio(R(ox, y, cw, 140), 0.06f, 0.5f);
+            TextoCentro("Aún no tienes pedidos · tus comprobantes aparecerán aqui", R(ox, y, cw, 140), 16, C_MUTED);
+            return y + 140;
+        }
+        for (int i = (int)lista.size() - 1; i >= 0; i--) {
+            const Pedido& p = lista[(size_t)i];
+            Rectangle r = R(ox, y, cw, 118);
+            Vidrio(r, 0.08f, 0.5f);
+            Texto("N° " + p.numero, r.x + 22, r.y + 16, 18, C_TINTA);
+            Texto(p.fecha, r.x + 22 + Ancho("N° " + p.numero, 18) + 14, r.y + 19, 13, C_MUTED);
+            Texto(Ajustar(p.cliente + " · " + p.documento, 13, cw - 330), r.x + 22, r.y + 44, 13, C_MUTED);
+            string items;
+            for (auto& s : p.items)
+                items += (items.empty() ? "" : "  |  ") + s;
+            Texto(Ajustar(items, 13, cw - 330), r.x + 22, r.y + 66, 13, C_TINTA);
+            Texto(Ajustar(p.entrega + " · " + p.pago, 12, cw - 330), r.x + 22, r.y + 90, 12, C_MUTED);
+            TextoDer(dinero(p.total), r.x + cw - 24, r.y + 18, 26, C_TINTA);
+            TextoDer("Atendió " + p.vendedor, r.x + cw - 24, r.y + 62, 12, C_MUTED);
+            TextoDer("Comisión " + dinero(p.comision), r.x + cw - 24, r.y + 82, 12, C_OK);
+            if (!p.cupon.empty())
+                TextoDer("Cupón " + p.cupon, r.x + cw - 24, r.y + 44, 12, C_ACENTO);
+            y += 134;
+        }
+        return y;
+    }
+};
+
 class Interfaz {
-    // --- Dimensiones lógicas (la interfaz se escala para llenar la ventana) ---
-    static constexpr float TOP = 64;  // alto de la barra superior
-    float W = 1280, H = 800, SC = 1;  // W,H = tamaño lógico; SC = escala
+    static constexpr float TOP = 64;
+    float W = 1280, H = 800, SC = 1;
 
-    const Vector2 OFF = {-9999, -9999};  // "mouse fuera de pantalla" para capas tapadas
+    const Vector2 OFF = {-9999, -9999};
     Tienda t_;
+    PantallaNosotros nosotros_{t_};
+    PantallaPedidos pedidos_{t_};
 
-    // --- Textos y colores fijos ---
     const char* tabs_[7] = {"Inicio", "Productos", "Ofertas", "Servicios", "Pedidos", "Nosotros", "Inventario"};
     const char* cats_[6] = {"Hardware", "Accesorios", "Periféricos", "Software", "Equipos", "Servicios"};
-    Color ac_[6] = {{99, 102, 241, 255}, {236, 72, 153, 255}, {16, 185, 129, 255},
-                    {245, 158, 11, 255}, {14, 165, 233, 255}, {244, 63, 94, 255}};  // color de cada categoría
+    const Color* ac_ = ACENTOS;
 
-    // --- Datos de pantalla ---
     vector<const Producto*> destacados_, recomendados_;
     vector<string> marcas_, modelosElegidos_;
-    unordered_map<int, float> hov_;          // animaciones hover por id de botón
-    vector<function<void()>> cola_;          // acciones diferidas (se ejecutan al final del cuadro)
+    unordered_map<int, float> hov_;
+    vector<function<void()>> cola_;
 
-    // --- Campos de texto ---
     Campo busca_{"", 24}, cNom_{"Nombres", 30}, cApP_{"Apellido paterno", 20}, cApM_{"Apellido materno", 20}, cDni_{"DNI", 8, 1},
         cTel_{"Celular", 9, 1}, cMail_{"Correo electrónico", 40}, cDir_{"Dirección de entrega", 50}, cRuc_{"RUC", 11, 1},
         cRazon_{"Razón social", 40}, cPago_{"", 12, 2}, cProdNombre_{"Nombre del producto", 40}, cProdMarca_{"Marca", 30},
         cProdPrecio_{"Precio (S/)", 10, 2}, cProdStock_{"Unidades iniciales", 6, 1}, cProdDetalle_{"Descripción breve", 60},
         cModelo_{"", 24}, cCupon_{"Cupón de descuento", 20}, cRepo_{"Unidades a reponer", 5, 1};
 
-    // --- Filtros y estado de texto ---
-    string prod_;      // producto elegido en la barra lateral (ej. "CPU"); vacío = todos
-    string marca_;     // marca elegida; vacío = todas
+    string prod_;
+    string marca_;
     string prevBusca_, prevModelo_, toastMsg_;
 
-    // --- Desplazamientos y animaciones ---
-    float sideScroll_ = 0, sideMax_ = 0;       // scroll de la barra lateral
-    float capaA_[4] = {};                      // opacidad animada de cada capa (1 = carrito, 2 = checkout, 3 = detalle)
-    float scroll_ = 0, scrollObj_ = 0, contentH_ = 0;  // scroll de la página
+    float sideScroll_ = 0, sideMax_ = 0;
+    float capaA_[4] = {};
+    float scroll_ = 0, scrollObj_ = 0, contentH_ = 0;
     float heroT_ = 0, heroFade_ = 1, bump_ = 0, toast_ = 0, toastA_ = 0, dt_ = 0.016f, wheel_ = 0;
 
-    // --- Banderas del cuadro actual ---
     bool sobreBarra_ = false, click_ = false, enter_ = false, manito_ = false, ibeam_ = false, clicCampo_ = false;
 
-    // --- Estado de navegación ---
     int paginaMarcas_ = 0, modeloOff_ = 0;
-    int tab_ = 0;                 // pestaña actual (0 = Inicio ... 6 = Inventario)
-    int cat_ = -1;                // categoría elegida (-1 = todas)
-    int orden_ = 0;               // 0 original, 1 menor precio, 2 mayor precio
-    int capa_ = 0, capaSig_ = 0;  // capa activa: 0 página, 1 carrito, 2 checkout, 3 detalle de producto
-    int paso_ = 0;                // paso del checkout (0 datos, 1 entrega, 2 pago, 3 listo)
-    int vend_ = 0;                // vendedor elegido
+    int tab_ = 0;
+    int cat_ = -1;
+    int orden_ = 0;
+    int capa_ = 0, capaSig_ = 0;
+    int paso_ = 0;
+    int vend_ = 0;
     int heroIdx_ = 0, modeloSel_ = 0, cantSel_ = 1, scrollCar_ = 0, catNueva_ = 0;
 
-    Campo* foco_ = nullptr;       // campo que tiene el teclado
-    Pedido ultimo_;               // último pedido pagado (se muestra en el paso "Listo")
+    Campo* foco_ = nullptr;
+    Pedido ultimo_;
     const Producto* sel_ = nullptr;
-    Vector2 M = {0, 0};           // mouse de la capa que se está dibujando (OFF si está tapada)
+    Vector2 M = {0, 0};
     Vector2 mouse_ = {0, 0};
 
-    // =============== utilidades ===============
-
-    // Animación suave 0..1 asociada a un id (para hover)
     float anim(int id, bool activo) {
         float& v = hov_[id];
         v = Lerp(v, activo ? 1.0f : 0.0f, Clamp(dt_ * 12, 0, 1));
@@ -2765,7 +2795,6 @@ class Interfaz {
         return CheckCollisionPointRec(M, r);
     }
 
-    // Programa una acción para el final del cuadro (evita modificar datos mientras se dibuja)
     void luego(function<void()> accion) {
         cola_.push_back(move(accion));
     }
@@ -2779,7 +2808,7 @@ class Interfaz {
         toast_ = segundos;
     }
 
-    void abrir(const Producto* producto) {  // abre la ventana de detalle
+    void abrir(const Producto* producto) {
         sel_ = producto;
         modeloSel_ = producto->recomendado();
         cantSel_ = 1;
@@ -2807,13 +2836,10 @@ class Interfaz {
         return max(2, (int)((anchoContenido + 16) / 236));
     }
 
-    void velo(float alfa, float intensidad) const {  // capa oscura detrás de las ventanas emergentes
+    void velo(float alfa, float intensidad) const {
         DrawRectangle(0, 0, (int)W + 2, (int)H + 2, Al(Color{20, 26, 70, 255}, intensidad * alfa));
     }
 
-    // =============== componentes reutilizables ===============
-
-    // Botón redondeado. Devuelve true si se hizo clic en él.
     bool boton(int id, Rectangle r, const string& texto, Color color, bool activo = true, float tam = 15) {
         bool encima = activo && sobre(r);
         float k = anim(id, encima);
@@ -2830,7 +2856,6 @@ class Interfaz {
         return encima && click_;
     }
 
-    // Chip seleccionable (la opción elegida se rellena de azul marino)
     bool chip(int id, Rectangle r, const string& texto, bool seleccionado, Color colorBorde = C_PRIM) {
         bool encima = sobre(r);
         float k = anim(id, encima);
@@ -2842,7 +2867,6 @@ class Interfaz {
         return encima && click_;
     }
 
-    // Botón de cerrar (X)
     bool equis(Rectangle r) {
         bool encima = sobre(r);
         Vector2 c = {r.x + r.width / 2, r.y + r.height / 2};
@@ -2854,7 +2878,6 @@ class Interfaz {
         return encima && click_;
     }
 
-    // Coloca un campo de texto, gestiona el clic (foco) y lo dibuja
     void campo(Campo& c, Rectangle r) {
         c.mover(r);
         c.actualizar(dt_, M);
@@ -2868,12 +2891,11 @@ class Interfaz {
         c.dibujar(foco_ == &c);
     }
 
-    void tag(Rectangle r, const string& texto, Color color) {  // etiqueta pequeña de color
+    void tag(Rectangle r, const string& texto, Color color) {
         DrawRectangleRounded(r, 0.5f, 8, Al(color, 0.18f));
         TextoCentro(texto, r, 10, color);
     }
 
-    // Casilla con visto (invertida = sobre fondo azul)
     void casilla(Rectangle cb, bool marcada, bool invertida) {
         DrawRectangleRounded(cb, 0.25f, 6, marcada ? (invertida ? WHITE : C_PRIM) : Al(WHITE, 0.9f));
         LineasR(cb, 0.25f, 6, 1, marcada ? (invertida ? WHITE : C_PRIM) : C_LINEA);
@@ -2889,8 +2911,20 @@ class Interfaz {
         return !p->disponible() ? C_PELIGRO : p->stock() <= 5 ? C_AVISO : C_OK;
     }
 
-    // Productos que cumplen pestaña, categoría, producto, marca y búsqueda actuales (ordenados si corresponde)
-    vector<const Producto*> filtrar() const {
+    vector<const Producto*> filtroCache_;
+    string filtroClave_;
+
+    const vector<const Producto*>& filtrar() {
+        string clave = to_string(tab_) + "\n" + to_string(cat_) + "\n" + prod_ + "\n" + marca_ + "\n" + busca_.texto +
+                       "\n" + to_string(orden_) + "\n" + to_string(t_.cantidadProductos());
+        if (clave != filtroClave_) {
+            filtroClave_ = clave;
+            filtroCache_ = calcularFiltro();
+        }
+        return filtroCache_;
+    }
+
+    vector<const Producto*> calcularFiltro() const {
         vector<const Producto*> resultado;
         string busqueda = minusc(busca_.texto);
         for (const Producto* p : t_.productos()) {
@@ -2914,17 +2948,15 @@ class Interfaz {
         return resultado;
     }
 
-    // =============== tarjeta de producto ===============
     void tarjeta(const Producto* p, Rectangle r, int id) {
         bool encima = sobre(r);
         float k = anim(id, encima);
-        Rectangle q = R(r.x, r.y - k * 4, r.width, r.height);  // se eleva al pasar el mouse
+        Rectangle q = R(r.x, r.y - k * 4, r.width, r.height);
         Color ac = ac_[p->categoria()];
         Vidrio(q, 0.06f, 0.5f + k);
         if (k > 0.05f)
             LineasR(q, 0.06f, 12, 2, Al(C_PRIM, k * 0.9f));
 
-        // imagen
         Rectangle im = R(q.x + 8, q.y + 8, q.width - 16, 128);
         DrawRectangleRounded(im, 0.1f, 10, Al(Mezcla(WHITE, ac, 0.14f), 0.85f));
         arte(p, im, ac);
@@ -2934,12 +2966,10 @@ class Interfaz {
         }
         Marca(p->marca(), R(q.x + q.width - 98, q.y + 16, 82, 22));
 
-        // textos
         Texto(cats_[p->categoria()], q.x + 14, q.y + 143, 11, ac);
         Texto(Ajustar(p->nombre(), 17, q.width - 28), q.x + 14, q.y + 158, 17, C_TINTA);
         Texto(Ajustar(p->detalle(), 12, q.width - 28), q.x + 14, q.y + 183, 12, C_MUTED);
 
-        // pie: precio y estado
         DrawLine((int)q.x + 14, (int)(q.y + q.height - 54), (int)(q.x + q.width - 14), (int)(q.y + q.height - 54), Al(C_LINEA, 0.9f));
         Texto("Desde", q.x + 14, q.y + q.height - 46, 11, C_MUTED);
         Texto(dinero(desdePrecio(p)), q.x + 14, q.y + q.height - 32, 18, C_PRIM);
@@ -2956,14 +2986,12 @@ class Interfaz {
         }
     }
 
-    // Encabezado de sección con barra de color
     void titulo(float x, float y, const string& texto, const string& subtitulo) {
         DrawRectangleRounded(R(x, y + 3, 4, 24), 1.0f, 4, C_ACENTO);
         Texto(texto, x + 14, y, 22, C_PRIM);
         Texto(subtitulo, x + 14 + Ancho(texto, 22) + 14, y + 7, 13, C_MUTED);
     }
 
-    // Franja azul suave que encabeza cada sección de la barra lateral
     void seccion(float x, float w, float& y, const string& texto) {
         DrawRectangleRounded(R(x + 8, y, w - 16, 30), 0.3f, 8, Al(C_PRIM, 0.10f));
         DrawRectangle((int)x + 8, (int)y + 6, 3, 18, C_PRIM);
@@ -2971,13 +2999,12 @@ class Interfaz {
         y += 38;
     }
 
-    // =============== barra lateral (Inicio y Productos): producto > marcas ===============
     void barraLateral(float x, float w) {
         float y = TOP + 16, h = H - TOP - 32;
         Rectangle panel = R(x, y, w, h), area = R(x, y + 52, w, h - 56);
         Vidrio(panel, 0.05f, 0.6f);
         DrawRectangleRounded(R(x, y, w, 46), 0.3f, 10, C_PRIM);
-        for (int k = 0; k < 3; k++)  // icono de menú
+        for (int k = 0; k < 3; k++)
             DrawRectangle((int)x + 16, (int)y + 15 + k * 6, 14, 2, WHITE);
         Texto("Catálogo de productos", x + 42, y + 13, 15, WHITE);
 
@@ -2988,7 +3015,6 @@ class Interfaz {
         }
         sideScroll_ = Clamp(sideScroll_, 0, sideMax_);
 
-        // Un elemento solo recibe clic si el mouse está dentro del área visible de la lista
         auto clicable = [&](Rectangle r) {
             return sobre(r) && sobre(area);
         };
@@ -2997,9 +3023,8 @@ class Interfaz {
         float inicioLista = area.y + 6 - sideScroll_, yy = inicioLista;
         BeginScissorMode((int)(area.x * SC), (int)(area.y * SC), (int)(area.width * SC), (int)(area.height * SC));
 
-        // ---- Sección "Producto": categorías (y sus productos si está abierta) ----
         seccion(x, w, yy, "Producto");
-        for (int i = -1; i < 6; i++) {  // -1 = "Todos los productos"
+        for (int i = -1; i < 6; i++) {
             int cantidad = 0;
             for (auto* p : prods)
                 if (i < 0 || p->categoria() == i)
@@ -3028,9 +3053,8 @@ class Interfaz {
             }
             yy += 34;
 
-            // Productos de la categoría abierta (CPU, GPU, RAM...)
             if (cat_ == i && i >= 0) {
-                vector<pair<string, int>> nombres;  // (nombre, cuántos hay)
+                vector<pair<string, int>> nombres;
                 for (auto* p : prods)
                     if (p->categoria() == i) {
                         auto it = find_if(nombres.begin(), nombres.end(), [&](const pair<string, int>& a) {
@@ -3067,7 +3091,6 @@ class Interfaz {
             }
         }
 
-        // ---- Sección "Marca": marcas disponibles con logo ----
         yy += 8;
         seccion(x, w, yy, "Marca");
         vector<pair<string, int>> marcas;
@@ -3111,7 +3134,6 @@ class Interfaz {
             Texto("Sin marcas", x + 20, yy, 12, C_MUTED);
         EndScissorMode();
 
-        // Barra de desplazamiento de la lista
         float contenido = yy - inicioLista + 14;
         sideMax_ = max(0.0f, contenido - area.height);
         if (sideMax_ > 0) {
@@ -3121,9 +3143,6 @@ class Interfaz {
         }
     }
 
-    // =============== páginas ===============
-    // Cada página recibe (ox = x inicial, cw = ancho de contenido, y = y inicial) y devuelve la y final.
-
     float pie(float ox, float cw, float y) {
         DrawLine((int)ox, (int)y, (int)(ox + cw), (int)y, Al(C_LINEA, 0.9f));
         Texto("TecnoStore · Tienda de computadoras", ox, y + 18, 13, C_TINTA);
@@ -3131,20 +3150,18 @@ class Interfaz {
         return y + 56;
     }
 
-    // ---------- Página: Inicio ----------
     float inicio(float ox, float cw, float y) {
         barraLateral(ox, 240);
         ox += 264;
         cw -= 264;
 
-        // --- Banner principal (rota entre productos destacados) ---
         const Producto* destacado = destacados_[(size_t)heroIdx_];
         Color ac = ac_[destacado->categoria()];
         float alfa = heroFade_, tiempo = (float)GetTime();
         Rectangle hero = R(ox, y, cw, 230);
         Sombra(hero, 0.1f, 1.5f);
         Deg(hero, 18, Mezcla(ac, Color{255, 70, 150, 255}, 0.5f), Mezcla(ac, Color{255, 150, 40, 255}, 0.55f), true);
-        for (int k = 0; k < 5; k++)  // anillos decorativos animados
+        for (int k = 0; k < 5; k++)
             DrawRing(Vector2{hero.x + hero.width * (0.5f + 0.09f * k), hero.y + 50 + k * 22 + sinf(tiempo * 0.9f + k) * 10},
                      (12.0f + k * 4) * 0.55f, 12.0f + k * 4, 0, 360, 32, Al(WHITE, 0.12f));
         DrawRectangleRounded(R(hero.x + 36, hero.y + 26, 120, 24), 0.5f, 10, Al(WHITE, 0.25f * alfa));
@@ -3167,7 +3184,7 @@ class Interfaz {
                 });
         }
         Marca(destacado->marca(), R(hero.x + hero.width - 132, hero.y + 16, 104, 34), alfa);
-        for (int i = 0; i < (int)destacados_.size(); i++) {  // puntos indicadores
+        for (int i = 0; i < (int)destacados_.size(); i++) {
             Rectangle punto = R(hero.x + 240 + i * 24.0f, hero.y + 172, 22, 20);
             if (i == heroIdx_)
                 DrawRectangleRounded(R(punto.x, punto.y + 6, 20, 8), 0.5f, 8, WHITE);
@@ -3183,7 +3200,6 @@ class Interfaz {
         }
         y += 262;
 
-        // --- Categorías: accesos directos ---
         titulo(ox, y, "Explora por categoría", "Elige qué tipo de producto buscas");
         y += 46;
         auto prods = t_.productos();
@@ -3214,7 +3230,6 @@ class Interfaz {
         }
         y += (6 + columnasCat - 1) / columnasCat * 84.0f + 18;
 
-        // --- Recomendados ---
         titulo(ox, y, "Recomendados para ti", "Los más elegidos de la tienda");
         y += 46;
         int columnasProd = columnas(cw);
@@ -3223,7 +3238,6 @@ class Interfaz {
             tarjeta(recomendados_[(size_t)i], R(ox + i * (anchoTarjeta + 16), y, anchoTarjeta, 262), 4000 + i);
         y += 262 + 32;
 
-        // --- Marcas: cuadrícula ordenada ---
         titulo(ox, y, "Marcas", "Toca una marca para ver sus productos");
         y += 46;
         int columnasMarca = max(3, (int)((cw + 10) / 170));
@@ -3256,7 +3270,6 @@ class Interfaz {
         }
         y += ((int)marcas_.size() + columnasMarca - 1) / columnasMarca * 62.0f + 20;
 
-        // --- Tres beneficios ---
         const char* titulos[3] = {"Pago a tu manera", "Entrega rápida", "Respaldo técnico"};
         const char* descripciones[3] = {"Efectivo, tarjeta, Yape y Plin", "Delivery a domicilio o recojo en tienda",
                                         "Garantía, mantenimiento y armado de PC"};
@@ -3272,17 +3285,15 @@ class Interfaz {
         return pie(ox, cw, y + 90 + 36);
     }
 
-    // ---------- Página: Productos / Ofertas / Servicios ----------
     float catalogo(float ox, float cw, float y) {
-        if (tab_ == 1) {  // Productos: barra lateral fija a la izquierda
+        if (tab_ == 1) {
             barraLateral(ox, 240);
             ox += 264;
             cw -= 264;
         }
-        auto lista = filtrar();
+        const auto& lista = filtrar();
         int n = (int)lista.size();
 
-        // Título según lo que esté filtrado
         const char* titulosPestana[4] = {"", "Productos", "Ofertas", "Servicios"};
         string titulo = tab_ == 1 && !prod_.empty() ? prod_ : tab_ == 1 && cat_ >= 0 ? string(cats_[cat_]) : string(titulosPestana[tab_]);
         Texto(titulo, ox, y, 30, C_PRIM);
@@ -3291,7 +3302,6 @@ class Interfaz {
             subtitulo += " · \"" + busca_.texto + "\"";
         Texto(subtitulo, ox + 1, y + 40, 13, C_MUTED);
 
-        // Selector de orden (control segmentado)
         const char* opcionesOrden[3] = {"Original", "Menor precio", "Mayor precio"};
         float anchos[3], anchoTotal = 0;
         for (int i = 0; i < 3; i++) {
@@ -3320,7 +3330,6 @@ class Interfaz {
         }
         y += 74;
 
-        // Chip de marca activa
         if (!marca_.empty()) {
             if (chip(20, R(ox, y, Ancho("Marca: " + marca_, 13) + 50, 30), "Marca: " + marca_ + "  ×", true))
                 luego([this] {
@@ -3329,7 +3338,6 @@ class Interfaz {
             y += 44;
         }
 
-        // Cuadrícula de tarjetas
         int columnasProd = columnas(cw);
         float anchoTarjeta = (cw - (columnasProd - 1) * 16) / columnasProd, altoTarjeta = 262;
         if (n == 0) {
@@ -3339,52 +3347,17 @@ class Interfaz {
         for (int i = 0; i < n; i++) {
             Rectangle r = R(ox + (i % columnasProd) * (anchoTarjeta + 16), y + (i / columnasProd) * (altoTarjeta + 16), anchoTarjeta,
                             altoTarjeta);
-            if (r.y + altoTarjeta >= TOP && r.y <= H)  // solo dibuja las tarjetas visibles
+            if (r.y + altoTarjeta >= TOP && r.y <= H)
                 tarjeta(lista[(size_t)i], r, 3000 + i);
         }
         return pie(ox, cw, y + (n + columnasProd - 1) / columnasProd * (altoTarjeta + 16) + 16);
     }
 
-    // ---------- Página: Pedidos ----------
-    float pedidos(float ox, float cw, float y) {
-        auto& lista = t_.pedidos();
-        Texto("Mis pedidos", ox, y, 30, C_PRIM);
-        Texto(to_string(lista.size()) + " compras realizadas", ox + 1, y + 40, 13, C_MUTED);
-        y += 74;
-        if (lista.empty()) {
-            Vidrio(R(ox, y, cw, 140), 0.06f, 0.5f);
-            TextoCentro("Aún no tienes pedidos · tus comprobantes aparecerán aquí", R(ox, y, cw, 140), 16, C_MUTED);
-            return y + 140;
-        }
-        for (int i = (int)lista.size() - 1; i >= 0; i--) {  // el más reciente primero
-            const Pedido& p = lista[(size_t)i];
-            Rectangle r = R(ox, y, cw, 118);
-            Vidrio(r, 0.08f, 0.5f);
-            Texto("N° " + p.numero, r.x + 22, r.y + 16, 18, C_TINTA);
-            Texto(p.fecha, r.x + 22 + Ancho("N° " + p.numero, 18) + 14, r.y + 19, 13, C_MUTED);
-            Texto(Ajustar(p.cliente + " · " + p.documento, 13, cw - 330), r.x + 22, r.y + 44, 13, C_MUTED);
-            string items;
-            for (auto& s : p.items)
-                items += (items.empty() ? "" : "  |  ") + s;
-            Texto(Ajustar(items, 13, cw - 330), r.x + 22, r.y + 66, 13, C_TINTA);
-            Texto(Ajustar(p.entrega + " · " + p.pago, 12, cw - 330), r.x + 22, r.y + 90, 12, C_MUTED);
-            TextoDer(dinero(p.total), r.x + cw - 24, r.y + 18, 26, C_TINTA);
-            TextoDer("Atendió " + p.vendedor, r.x + cw - 24, r.y + 62, 12, C_MUTED);
-            TextoDer("Comisión " + dinero(p.comision), r.x + cw - 24, r.y + 82, 12, C_OK);
-            if (!p.cupon.empty())
-                TextoDer("Cupón " + p.cupon, r.x + cw - 24, r.y + 44, 12, C_ACENTO);
-            y += 134;
-        }
-        return y;
-    }
-
-    // ---------- Página: Inventario (alta de productos y reposición de stock) ----------
     float inventario(float ox, float cw, float y) {
         Texto("Administrar productos", ox, y, 30, C_PRIM);
         Texto("Agrega artículos, revisa existencias y repón lo que se haya agotado.", ox + 1, y + 40, 14, C_MUTED);
         y += 72;
 
-        // ---- Formulario "Nuevo producto" ----
         Rectangle form = R(ox, y, cw, 470);
         Vidrio(form, 0.06f, 0.6f);
         Texto("Nuevo producto", form.x + 20, form.y + 16, 20, C_TINTA);
@@ -3393,13 +3366,12 @@ class Interfaz {
         campo(cProdPrecio_, R(form.x + cw * 0.44f + 26, form.y + 68, cw * 0.14f, 44));
         campo(cProdStock_, R(form.x + cw * 0.60f + 18, form.y + 68, cw * 0.14f, 44));
 
-        // Marcas del catálogo (paginadas de 6 en 6)
         Texto("Elige una marca del catálogo o escribe otra arriba", form.x + 20, form.y + 130, 12, C_MUTED);
         const int marcasPorPagina = 6;
         int paginasMarcas = max(1, (int)(marcas_.size() + marcasPorPagina - 1) / marcasPorPagina);
         paginaMarcas_ = Clamp(paginaMarcas_, 0, paginasMarcas - 1);
         float marcaX = form.x + 20, marcaY = form.y + 148;
-        if (boton(720, R(marcaX, marcaY, 38, 30), "‹", C_SUAVE, paginaMarcas_ > 0, 16))
+        if (boton(720, R(marcaX, marcaY, 38, 30), "<", C_SUAVE, paginaMarcas_ > 0, 16))
             luego([this] {
                 paginaMarcas_ = max(0, paginaMarcas_ - 1);
             });
@@ -3414,14 +3386,13 @@ class Interfaz {
                     foco_ = nullptr;
                 });
         }
-        if (boton(721, R(form.x + cw - 58, marcaY, 38, 30), "›", C_SUAVE, paginaMarcas_ + 1 < paginasMarcas, 16))
+        if (boton(721, R(form.x + cw - 58, marcaY, 38, 30), ">", C_SUAVE, paginaMarcas_ + 1 < paginasMarcas, 16))
             luego([this, paginasMarcas] {
                 paginaMarcas_ = min(paginasMarcas - 1, paginaMarcas_ + 1);
             });
         Texto(to_string(min((paginaMarcas_ + 1) * marcasPorPagina, (int)marcas_.size())) + "/" + to_string(marcas_.size()) + " marcas",
               form.x + 20, form.y + 182, 10, C_MUTED);
 
-        // Modelos de la marca elegida (selección múltiple)
         Texto("Modelos de " + (cProdMarca_.texto.empty() ? string("la marca") : cProdMarca_.texto) + " (marca uno o varios)",
               form.x + 20, form.y + 204, 12, C_MUTED);
         vector<string> opciones = modelosDeMarca(cProdMarca_.texto);
@@ -3447,7 +3418,6 @@ class Interfaz {
 
         campo(cProdDetalle_, R(form.x + 20, form.y + 326, cw * 0.52f, 44));
 
-        // Categoría
         Texto("Categoría", form.x + 20, form.y + 390, 12, C_MUTED);
         float chipX = form.x + 20;
         for (int i = 0; i < 6; i++) {
@@ -3461,7 +3431,6 @@ class Interfaz {
         string codigoNuevo = t_.siguienteCodigo();
         Texto("Imagen opcional: img/productos/" + codigoNuevo + ".png", form.x + 20, form.y + 447, 11, C_MUTED);
 
-        // Botón Agregar producto
         if (boton(719, R(form.x + cw - 190, form.y + 405, 170, 42), "Agregar producto", C_PRIM, true, 14)) {
             string nombre = cProdNombre_.texto, marca = cProdMarca_.texto, detalle = cProdDetalle_.texto;
             double precio = atof(cProdPrecio_.texto.c_str());
@@ -3484,7 +3453,6 @@ class Interfaz {
         }
         y += form.height + 20;
 
-        // ---- Lista de stock ----
         auto todos = t_.productos();
         vector<const Producto*> lista;
         string busqueda = minusc(busca_.texto);
@@ -3501,7 +3469,7 @@ class Interfaz {
         Texto("Total en tienda: " + to_string(totalUnidades) + " unidades · " + to_string(agotados) + " agotados", ox + 14, y + 34,
               12, C_MUTED);
         cRepo_.pista = "10";
-        campo(cRepo_, R(ox + cw - 170, y + 24, 170, 40));  // cantidad que se suma al pulsar "Agregar"
+        campo(cRepo_, R(ox + cw - 170, y + 24, 170, 40));
         y += 84;
         int cantidadRepo = atoi(cRepo_.texto.c_str());
         if (lista.empty()) {
@@ -3513,7 +3481,7 @@ class Interfaz {
             const Producto* p = lista[(size_t)i];
             Rectangle r = R(ox, y + i * (altoFila + 8), cw, altoFila);
             if (r.y + altoFila < TOP || r.y > H)
-                continue;  // fuera de pantalla
+                continue;
             Vidrio(r, 0.08f, 0.32f);
             Texto(Ajustar(p->nombre(), 15, cw * 0.40f), r.x + 16, r.y + 10, 15, C_TINTA);
             Texto(Ajustar(p->codigo() + " · " + cats_[p->categoria()], 11, cw * 0.40f), r.x + 16, r.y + 34, 11, C_MUTED);
@@ -3534,59 +3502,14 @@ class Interfaz {
         return y + (lista.size() * (altoFila + 8));
     }
 
-    // ---------- Página: Nosotros ----------
-    float nosotros(float ox, float cw, float y) {
-        Texto("Sobre TecnoStore", ox, y, 30, C_PRIM);
-        y += 56;
-        Rectangle r = R(ox, y, cw, 96);
-        Vidrio(r, 0.08f, 0.5f);
-        Texto("Tienda de computadoras: hardware, accesorios, periféricos, software, equipos completos y servicio técnico.",
-              r.x + 24, r.y + 18, 16, C_TINTA);
-        Texto("Horario: Lun a Sáb 9:00 - 20:00  ·  Tel. 951 000 000  ·  ventas@tecnostore.pe  ·  Pagos: Efectivo, Tarjeta, Yape y Plin",
-              r.x + 24, r.y + 54, 13, C_MUTED);
-        y += 126;
-
-        // Equipo
-        Texto("Nuestro equipo", ox, y, 22, C_TINTA);
-        y += 42;
-        auto& equipo = t_.equipo();
-        int cantidad = (int)equipo.size(), columnasEquipo = max(2, min(cantidad, (int)((cw + 16) / 236)));
-        float anchoTarjeta = (cw - (columnasEquipo - 1) * 16) / columnasEquipo;
-        for (int i = 0; i < cantidad; i++) {
-            Rectangle c = R(ox + (i % columnasEquipo) * (anchoTarjeta + 16), y + (i / columnasEquipo) * 120.0f, anchoTarjeta, 104);
-            Vidrio(c, 0.1f, 0.4f);
-            DrawCircleV(Vector2{c.x + 34, c.y + 38}, 20, Al(ac_[i % 6], 0.25f));
-            TextoCentro(equipo[(size_t)i]->datos().nombres.substr(0, 1), R(c.x + 14, c.y + 18, 40, 40), 18, C_TINTA);
-            Texto(Ajustar(equipo[(size_t)i]->nombreCompleto(), 14, anchoTarjeta - 76), c.x + 64, c.y + 22, 14, C_TINTA);
-            Texto(Ajustar(equipo[(size_t)i]->codigo(), 12, anchoTarjeta - 76), c.x + 64, c.y + 44, 12, C_MUTED);
-            Texto(Ajustar(equipo[(size_t)i]->rol(), 12, anchoTarjeta - 28), c.x + 16, c.y + 76, 12, ac_[i % 6]);
-        }
-        y += (cantidad + columnasEquipo - 1) / columnasEquipo * 120.0f + 18;
-
-        // Proveedores
-        Texto("Proveedores", ox, y, 22, C_TINTA);
-        y += 42;
-        auto& proveedores = t_.proveedores();
-        float anchoProv = (cw - 16) / 2;
-        for (int i = 0; i < (int)proveedores.size(); i++) {
-            Rectangle c = R(ox + i * (anchoProv + 16), y, anchoProv, 80);
-            Vidrio(c, 0.1f, 0.4f);
-            Texto(proveedores[(size_t)i]->razon(), c.x + 20, c.y + 16, 16, C_TINTA);
-            Texto(Ajustar(proveedores[(size_t)i]->detalle() + " · " + proveedores[(size_t)i]->rol(), 12, anchoProv - 40), c.x + 20,
-                  c.y + 44, 12, C_MUTED);
-        }
-        return y + 80;
-    }
-
-    // Dibuja la pestaña actual y la barra de desplazamiento de la página
     void dibujarPagina() {
         sobreBarra_ = false;
         M = (capa_ == 0 && CheckCollisionPointRec(mouse_, R(0, TOP, W, H - TOP))) ? mouse_ : OFF;
         const float ox = 48, cw = W - 96, y0 = TOP + 20 - scroll_;
         float yFinal = tab_ == 0   ? inicio(ox, cw, y0)
                        : tab_ <= 3 ? catalogo(ox, cw, y0)
-                       : tab_ == 4 ? pedidos(ox, cw, y0)
-                       : tab_ == 5 ? nosotros(ox, cw, y0)
+                       : tab_ == 4 ? pedidos_.dibujar(ox, cw, y0)
+                       : tab_ == 5 ? nosotros_.dibujar(ox, cw, y0)
                                    : inventario(ox, cw, y0);
         contentH_ = yFinal - y0 + 40;
         float altoVisible = H - TOP, maxScroll = max(0.0f, contentH_ - altoVisible);
@@ -3597,14 +3520,12 @@ class Interfaz {
         }
     }
 
-    // =============== barra superior ===============
     void dibujarTopbar() {
         M = capa_ == 0 ? mouse_ : OFF;
         DrawRectangleGradientV(0, (int)TOP, (int)W + 1, 12, Color{60, 80, 150, 26}, Color{60, 80, 150, 0});
         DrawRectangle(0, 0, (int)W + 1, (int)TOP, Al(WHITE, 0.94f));
         DrawRectangle(0, (int)TOP - 3, (int)W + 1, 3, C_PRIM);
 
-        // Logo
         Rectangle logo = R(24, 12, 40, 40);
         DrawRectangleRounded(R(logo.x + 2, logo.y + 4, logo.width - 4, logo.height - 2), 0.3f, 10, Al(C_PRIM, 0.25f));
         DrawRectangleRounded(logo, 0.3f, 10, C_PRIM);
@@ -3612,7 +3533,6 @@ class Interfaz {
         Texto("TecnoStore", 74, 12, 20, C_TINTA);
         Texto("Tienda de computadoras", 74, 37, 11, C_MUTED);
 
-        // Pestañas
         float x = 230;
         for (int i = 0; i < 7; i++) {
             float ancho = Ancho(tabs_[i], 15) + 24;
@@ -3635,11 +3555,9 @@ class Interfaz {
             x += ancho + 4;
         }
 
-        // Buscador
         busca_.pista = "Buscar producto o marca...";
         campo(busca_, R(W - 476, 12, 240, 40));
 
-        // Botón del carrito
         Rectangle botonCarrito = R(W - 216, 12, 192, 40);
         bool encima = sobre(botonCarrito);
         float k = anim(50, encima);
@@ -3658,13 +3576,12 @@ class Interfaz {
         }
     }
 
-    // =============== carrito lateral ===============
     void dibujarCarrito() {
         float alfa = capaA_[1];
         if (alfa < 0.01f)
             return;
         M = capa_ == 1 ? mouse_ : OFF;
-        float suave = 1 - powf(1 - alfa, 3), anchoPanel = 400, dx = W - anchoPanel * suave;  // desliza desde la derecha
+        float suave = 1 - powf(1 - alfa, 3), anchoPanel = 400, dx = W - anchoPanel * suave;
         velo(alfa, 0.35f);
         Rectangle panel = R(dx, 0, anchoPanel, H);
         DrawRectangle((int)dx, 0, (int)anchoPanel + 1, (int)H + 1, C_MODAL);
@@ -3695,7 +3612,6 @@ class Interfaz {
             Texto("Elige un producto y su modelo para agregarlo", dx + 20, 144, 12, C_MUTED);
         }
 
-        // Lista (máximo 5 líneas visibles, con rueda del mouse)
         const int lineasVisibles = 5;
         if (sobre(R(dx + 20, 76, 360, 290)) && wheel_ != 0)
             scrollCar_ += wheel_ < 0 ? 1 : -1;
@@ -3716,7 +3632,6 @@ class Interfaz {
                           196),
                   fila.x + 56, fila.y + 30, 12, C_MUTED);
 
-            // Botones − y +
             Rectangle botonMenos = R(fila.x + 262, fila.y + 15, 24, 24), botonMas = R(fila.x + 314, fila.y + 15, 24, 24);
             bool encimaMenos = sobre(botonMenos), encimaMas = sobre(botonMas);
             DrawRectangleRounded(botonMenos, 1.0f, 10, encimaMenos ? Mezcla(C_LINEA, C_PELIGRO, 0.35f) : C_LINEA);
@@ -3747,7 +3662,6 @@ class Interfaz {
         if (numLineas > lineasVisibles)
             Texto("Rueda del mouse para ver más", dx + 20, 358, 11, C_PRIM);
 
-        // Totales
         DrawLine((int)dx + 20, 380, (int)dx + 380, 380, C_LINEA);
         float yy = 394;
         Texto("Subtotal", dx + 20, yy, 14, C_MUTED);
@@ -3768,9 +3682,6 @@ class Interfaz {
         }
     }
 
-    // =============== checkout: datos, entrega, pago, listo ===============
-
-    // Campos del paso actual (para moverse con la tecla Tab)
     vector<Campo*> camposPaso() {
         if (paso_ == 0)
             return {&cNom_, &cApP_, &cApM_, &cDni_, &cTel_, &cMail_};
@@ -3789,7 +3700,6 @@ class Interfaz {
         return campos;
     }
 
-    // Valida los campos del paso actual y marca los errores
     bool validar() {
         bool todoBien = true;
         auto comprobar = [&](Campo& campo, bool condicion, const char* mensaje) {
@@ -3821,7 +3731,6 @@ class Interfaz {
         return todoBien;
     }
 
-    // Pasa al siguiente paso; en el último paso realiza el pago
     void avanzar() {
         if (t_.carrito().cantidad() == 0 || !validar())
             return;
@@ -3853,7 +3762,6 @@ class Interfaz {
         float x0 = P.x + 32;
         Texto("Finalizar compra", x0, P.y + 22, 24, C_TINTA);
 
-        // Indicador de pasos
         const char* nombresPasos[4] = {"Datos", "Entrega", "Pago", "Listo"};
         for (int i = 0; i < 4; i++) {
             float sx = x0 + i * 130;
@@ -3867,7 +3775,6 @@ class Interfaz {
         auto fila = [&](int n) {
             return P.y + 158 + n * 82;
         };
-        // Grupo de chips (opciones) que ejecuta "accion(indice)" al elegir una
         auto grupoChips = [&](int idBase, float y, const vector<string>& opciones, int elegida, int columnasChips,
                               function<void(int)> accion) {
             for (int i = 0; i < (int)opciones.size(); i++)
@@ -3888,8 +3795,7 @@ class Interfaz {
             }
         };
 
-        // ---- Contenido de cada paso ----
-        if (paso_ == 0) {  // DATOS
+        if (paso_ == 0) {
             Texto("Para emitir tu comprobante necesitamos tus datos", x0, P.y + 108, 15, C_MUTED);
             campo(cNom_, R(x0, fila(0), 264, 46));
             campo(cApP_, R(x0 + 276, fila(0), 264, 46));
@@ -3897,7 +3803,7 @@ class Interfaz {
             campo(cDni_, R(x0 + 276, fila(1), 264, 46));
             campo(cTel_, R(x0, fila(2), 264, 46));
             campo(cMail_, R(x0 + 276, fila(2), 264, 46));
-        } else if (paso_ == 1) {  // ENTREGA
+        } else if (paso_ == 1) {
             Texto("COMPROBANTE", x0, P.y + 108, 11, C_MUTED);
             grupoChips(100, P.y + 128, t_.nombresComprobantes(), t_.comprobante(), 2, [this](int i) {
                 t_.elegirComprobante(i);
@@ -3915,7 +3821,7 @@ class Interfaz {
                 campo(cDir_, R(x0, P.y + 404, 540, 46));
             else
                 Texto("Recoge tu pedido en tienda · Lun a Sáb 9:00 - 20:00", x0, P.y + 386, 13, C_MUTED);
-        } else if (paso_ == 2) {  // PAGO
+        } else if (paso_ == 2) {
             Texto("ATENDIDO POR", x0, P.y + 108, 11, C_MUTED);
             vector<string> nombresVendedores;
             for (auto* v : t_.vendedores())
@@ -3933,7 +3839,6 @@ class Interfaz {
             if (cPago_.error.empty() && t_.medioActual().validar(cPago_.texto, t_.total()).empty())
                 Texto(Ajustar(t_.medioActual().resumen(cPago_.texto, t_.total()), 13, 540), x0 + 2, P.y + 404, 13, C_OK);
 
-            // Cupón de descuento
             if (t_.cupon()) {
                 Rectangle cuponRect = R(x0, P.y + 452, 540, 40);
                 Caja(cuponRect, 0.2f, Al(C_OK, 0.12f), C_OK);
@@ -3950,7 +3855,7 @@ class Interfaz {
                 if (boton(84, R(x0 + 392, P.y + 452, 148, 40), "Aplicar", C_PRIM, true, 15) || (enter_ && foco_ == &cCupon_))
                     aplicarCupon();
             }
-        } else {  // LISTO
+        } else {
             float escala = 0.6f + 0.4f * suave;
             Vector2 centro = {x0 + 270, P.y + 190};
             DrawCircleV(centro, 46 * escala, Al(C_OK, 0.2f));
@@ -3964,7 +3869,6 @@ class Interfaz {
             TextoCentro(Ajustar("Enviaremos el detalle a " + cMail_.texto, 13, 540), R(x0, P.y + 366, 540, 24), 13, C_MUTED);
         }
 
-        // ---- Botones inferiores ----
         if (paso_ == 3) {
             if (boton(83, R(x0, P.y + 536, 540, 44), "Seguir comprando", C_PRIM, true, 16)) {
                 paso_ = 0;
@@ -3981,7 +3885,6 @@ class Interfaz {
                 avanzar();
         }
 
-        // ---- Panel derecho: resumen / comprobante (azul marino con acentos naranja) ----
         Rectangle panelDer = R(P.x + 596, P.y + 16, 328, P.height - 32);
         DrawRectangleRounded(panelDer, 0.04f, 12, C_PRIM);
         const Color texto1 = WHITE, texto2 = C_LINEA, verde{110, 225, 160, 255};
@@ -3991,7 +3894,7 @@ class Interfaz {
         DrawRectangleRounded(R(panelDer.x + 20, panelDer.y + 44, 36, 3), 1.0f, 4, C_ACENTO);
         float yy = panelDer.y + 64, xDerecha = panelDer.x + panelDer.width - 20;
 
-        if (paso_ < 3) {  // resumen de la compra
+        if (paso_ < 3) {
             auto& lineas = t_.carrito().lineas();
             for (int i = 0; i < min((int)lineas.size(), 6); i++, yy += 26) {
                 const Linea& l = lineas[(size_t)i];
@@ -4020,7 +3923,7 @@ class Interfaz {
                 filaResumen("Recargo tarjeta", dinero(t_.recargo()), texto2);
             Texto("Total", panelDer.x + 20, panelDer.y + panelDer.height - 52, 15, texto2);
             TextoDer(dinero(t_.total()), xDerecha, panelDer.y + panelDer.height - 62, 28, C_ACENTO);
-        } else {  // comprobante del pedido pagado
+        } else {
             vector<string> datos = {"N° " + ultimo_.numero + " · " + ultimo_.fecha,
                                     ultimo_.cliente,
                                     ultimo_.documento,
@@ -4043,7 +3946,6 @@ class Interfaz {
         }
     }
 
-    // =============== ventana de detalle de producto ===============
     void dibujarProducto() {
         float alfa = capaA_[3];
         if (alfa < 0.01f || !sel_)
@@ -4058,7 +3960,6 @@ class Interfaz {
             ir(0);
         Vidrio(ventana, 0.04f, 3, C_MODAL);
 
-        // ---- Escenario izquierdo (ilustración con degradado) ----
         Rectangle escenario = R(ventana.x + 14, ventana.y + 14, 340, ventana.height - 28);
         Deg(escenario, 16, Mezcla(ac, Color{255, 70, 150, 255}, 0.35f), Mezcla(ac, Color{90, 60, 200, 255}, 0.55f), false);
         for (int k = 0; k < 4; k++)
@@ -4071,7 +3972,6 @@ class Interfaz {
         }
         arte(p, R(escenario.x + 10, escenario.y + 70, escenario.width - 20, 330), Mezcla(ac, WHITE, 0.5f));
 
-        // ---- Columna derecha: datos ----
         float x0 = ventana.x + 378, anchoDer = ventana.width - 378 - 28;
         if (equis(R(ventana.x + ventana.width - 46, ventana.y + 14, 28, 28)))
             ir(0);
@@ -4084,8 +3984,7 @@ class Interfaz {
         DrawCircleV(Vector2{x0 + 6, ventana.y + 134}, 4, estadoColor(p));
         Texto(p->estado() + " · " + to_string(p->stock()) + " en stock", x0 + 18, ventana.y + 126, 13, C_TINTA);
 
-        // ---- Selector de modelo: lista con buscador y rueda del mouse ----
-        vector<int> indices;  // modelos que coinciden con la búsqueda
+        vector<int> indices;
         string busqueda = minusc(cModelo_.texto);
         for (int i = 0; i < (int)p->modelos().size(); i++)
             if (busqueda.empty() || minusc(p->modelos()[(size_t)i].nombre).find(busqueda) != string::npos)
@@ -4114,7 +4013,7 @@ class Interfaz {
             float k = anim(5000 + j, encima);
             Caja(fila, 0.2f, seleccionado ? C_PRIM : Mezcla(Al(WHITE, 0.8f), C_SUAVE, k),
                  seleccionado ? C_PRIM : Mezcla(C_LINEA, C_MUTED, k * 0.5f));
-            Vector2 radio = {fila.x + 20, fila.y + 20};  // botón de radio
+            Vector2 radio = {fila.x + 20, fila.y + 20};
             DrawCircleV(radio, 8, seleccionado ? WHITE : C_MUTED);
             DrawCircleV(radio, 6, seleccionado ? C_PRIM : WHITE);
             if (seleccionado)
@@ -4135,7 +4034,7 @@ class Interfaz {
                     });
             }
         }
-        if (numModelos > filasVisibles) {  // barra de desplazamiento
+        if (numModelos > filasVisibles) {
             float altoPista = filasVisibles * 44.0f - 4, altoBarra = max(24.0f, altoPista * filasVisibles / numModelos);
             float yBarra = zonaLista.y + (altoPista - altoBarra) * modeloOff_ / (float)(numModelos - filasVisibles);
             DrawRectangleRounded(R(x0 + anchoDer - 6, zonaLista.y, 4, altoPista), 1.0f, 4, Al(C_LINEA, 0.8f));
@@ -4145,8 +4044,7 @@ class Interfaz {
         size_t modeloActual = (size_t)Clamp((float)modeloSel_, 0, (float)p->modelos().size() - 1);
         TextoDer(Ajustar("Elegido: " + p->modelos()[modeloActual].nombre, 12, anchoDer * 0.6f), x0 + anchoDer, ventana.y + 412, 12, C_TINTA);
 
-        // ---- Cantidad y botón Agregar ----
-        int libres = p->stock() - t_.carrito().cantidadDe(p);  // unidades que aún se pueden agregar
+        int libres = p->stock() - t_.carrito().cantidadDe(p);
         cantSel_ = max(1, min(cantSel_, max(1, libres)));
         Texto("CANTIDAD", x0, ventana.y + 436, 11, C_MUTED);
         Rectangle selector = R(x0, ventana.y + 456, 130, 46);
@@ -4183,7 +4081,6 @@ class Interfaz {
             });
     }
 
-    // Mensaje emergente en la parte superior
     void dibujarAviso() {
         if (toastA_ < 0.01f)
             return;
@@ -4196,7 +4093,6 @@ class Interfaz {
         Texto(toastMsg_, r.x + 52, r.y + 14, 15, C_TINTA);
     }
 
-    // Fondo casi blanco con manchas pastel suaves que se ven a través del vidrio
     void fondo() {
         float t = (float)GetTime();
         DrawRectangleGradientV(0, 0, (int)W + 1, (int)H + 1, Color{250, 251, 254, 255}, Color{240, 244, 252, 255});
@@ -4208,9 +4104,6 @@ class Interfaz {
                    Color{201, 220, 250, 0});
     }
 
-    // =============== ciclo de cada cuadro ===============
-
-    // Lee teclado/mouse y actualiza animaciones y estado
     void leerEntradaYActualizar() {
         if (IsKeyPressed(KEY_F11))
             ToggleFullscreen();
@@ -4218,7 +4111,7 @@ class Interfaz {
         int anchoVentana = GetScreenWidth(), altoVentana = GetScreenHeight();
         SC = Clamp(min(anchoVentana / 1280.0f, altoVentana / 760.0f), 0.55f, 1.6f);
         W = anchoVentana / SC;
-        H = altoVentana / SC;  // la interfaz se escala para llenar la ventana
+        H = altoVentana / SC;
 
         dt_ = GetFrameTime();
         mouse_ = Vector2{GetMouseX() / SC, GetMouseY() / SC};
@@ -4227,7 +4120,6 @@ class Interfaz {
         enter_ = IsKeyPressed(KEY_ENTER) && capa_ == 2;
         manito_ = ibeam_ = clicCampo_ = false;
 
-        // Animación de las capas, del carrito y del aviso
         for (int i = 1; i < 4; i++)
             capaA_[i] = Lerp(capaA_[i], capa_ == i ? 1.0f : 0.0f, Clamp(dt_ * 11, 0, 1));
         bump_ = Lerp(bump_, 0, Clamp(dt_ * 8, 0, 1));
@@ -4235,7 +4127,6 @@ class Interfaz {
             toast_ -= dt_;
         toastA_ = Lerp(toastA_, toast_ > 0 ? 1.0f : 0.0f, Clamp(dt_ * 8, 0, 1));
 
-        // Teclado: escribir, borrar, Tab, Esc
         for (int caracter = GetCharPressed(); caracter > 0; caracter = GetCharPressed())
             if (foco_)
                 foco_->teclear(caracter);
@@ -4257,7 +4148,6 @@ class Interfaz {
             }
         }
 
-        // Si cambia la búsqueda, vuelve arriba y salta a "Productos" si estabas en otra pestaña
         if (busca_.texto != prevBusca_) {
             prevBusca_ = busca_.texto;
             scrollObj_ = 0;
@@ -4267,20 +4157,17 @@ class Interfaz {
             }
         }
 
-        // Scroll de la página (suavizado)
         if (capa_ == 0 && wheel_ != 0 && !sobreBarra_)
             scrollObj_ -= wheel_ * 80;
         scrollObj_ = Clamp(scrollObj_, 0.0f, max(0.0f, contentH_ - (H - TOP)));
         scroll_ = Lerp(scroll_, scrollObj_, Clamp(dt_ * 12, 0, 1));
 
-        // Banner principal: cambia solo cada 7 segundos
         heroFade_ = Clamp(heroFade_ + dt_ * 3, 0, 1);
         heroT_ += dt_;
         if (heroT_ > 7.0f)
             cambiarHero((heroIdx_ + 1) % (int)destacados_.size());
     }
 
-    // Dibuja todo, de atrás hacia adelante
     void dibujarTodo() {
         BeginDrawing();
         ClearBackground(C_BG);
@@ -4297,10 +4184,9 @@ class Interfaz {
         EndDrawing();
     }
 
-    // Procesa clics, cambios de capa y acciones pendientes al terminar el cuadro
     void cerrarCuadro() {
         if (click_ && !clicCampo_)
-            foco_ = nullptr;  // clic fuera de un campo = pierde el foco
+            foco_ = nullptr;
         if (capaSig_ != capa_)
             foco_ = nullptr;
         capa_ = capaSig_;
@@ -4330,10 +4216,10 @@ public:
                     return p;
             return nullptr;
         };
-        for (const char* nombre : {"GPU", "Laptop", "Mouse inalambrico", "Windows (OS)"})  // banner rotativo
+        for (const char* nombre : {"GPU", "Laptop", "Mouse inalambrico", "Windows (OS)"})
             if (auto p = buscarPorNombre(nombre))
                 destacados_.push_back(p);
-        for (const char* nombre : {"Memoria RAM", "SSD", "Teclado", "Office", "Parlante", "CPU"})  // "Recomendados para ti"
+        for (const char* nombre : {"Memoria RAM", "SSD", "Teclado", "Office", "Parlante", "CPU"})
             if (auto p = buscarPorNombre(nombre))
                 recomendados_.push_back(p);
     }
@@ -4342,13 +4228,12 @@ public:
         SetConfigFlags(FLAG_MSAA_4X_HINT | FLAG_WINDOW_RESIZABLE);
         InitWindow(1280, 800, "TecnoStore - Tienda de Computadoras (POO)");
 
-        // La ventana se ajusta al tamaño de tu pantalla
         int monitor = GetCurrentMonitor(), anchoMonitor = GetMonitorWidth(monitor), altoMonitor = GetMonitorHeight(monitor);
         int w = min(1280, (int)(anchoMonitor * 0.94f)), h = min(800, (int)(altoMonitor * 0.88f));
         SetWindowSize(w, h);
         SetWindowPosition(max(0, (anchoMonitor - w) / 2), max(20, (altoMonitor - h) / 2 - 20));
         SetWindowMinSize(800, 520);
-        SetExitKey(KEY_NULL);  // ESC no cierra el programa: cierra ventanas / limpia la búsqueda
+        SetExitKey(KEY_NULL);
         SetTargetFPS(60);
         cargarFuente();
 
@@ -4363,24 +4248,10 @@ public:
 };
 
 // =====================================================================================
-// 9. MAIN
+// 7. MAIN
 // =====================================================================================
 int main() {
-    // 1. PRIMERO LA VENTANA (¡Siempre!)
-    InitWindow(800, 450, "Mi Proyecto POO");
-
-    // 2. DESPUÉS puedes cargar fuentes, texturas o imágenes tranquilamente
-    Font miFuente = LoadFont("tu_fuente.ttf"); 
-
-    SetTargetFPS(60);
-
-    while (!WindowShouldClose()) {
-        // Tu bucle del juego...
-        BeginDrawing();
-        ClearBackground(RAYWHITE);
-        EndDrawing();
-    }
-
-    CloseWindow();
+    Interfaz app;
+    app.ejecutar();
     return 0;
 }
