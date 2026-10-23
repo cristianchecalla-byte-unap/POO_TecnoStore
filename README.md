@@ -5,9 +5,11 @@
 ![POO](https://img.shields.io/badge/paradigma-POO-success)
 ![Code::Blocks](https://img.shields.io/badge/IDE-Code%3A%3ABlocks-informational)
 
-Aplicación de escritorio que simula una tienda de computadoras, desarrollada en **C++17** con **Programación Orientada a Objetos** y una interfaz gráfica hecha con **raylib**.
+Aplicación de escritorio que simula una tienda de computadoras, desarrollada en **C++** con **Programación Orientada a Objetos** y una interfaz gráfica hecha con **raylib**.
 
 > Proyecto del curso de Programación Orientada a Objetos – Escuela Profesional de Ingeniería de Sistemas, Universidad Nacional del Altiplano (UNA – Puno).
+
+NOTA: El archivo principal se denomina main.cpp
 
 ---
 
