@@ -134,12 +134,11 @@ Si no hay imágenes, el programa dibuja ilustraciones propias.
 
 | N.° | Apellidos y nombres | Código |
 |---|---|---|
-| 1 | _Completar_ | _Completar_ |
-| 2 | _Completar_ | _Completar_ |
-| 3 | _Completar_ | _Completar_ |
-| 4 | _Completar_ | _Completar_ |
+| 1 | Checalla Alata, Cristian Alex| 231503 |
+| 2 | Balatro Balatrez | 123454 |
+| 3 | Neko Baboso | 123429 |
 
-**Docente:** _Completar_
+**Docente:** Mr. Aceituno Deidad XD
 
 ---
 
