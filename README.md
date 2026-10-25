@@ -27,7 +27,7 @@ NOTA: El archivo principal se denomina main.cpp
 
 ## 🎬 Video de demostración
 
-[[▶️ Ver el video](https://drive.google.com/file/d/168Y22QBmH3TcarbfVL0Tpzig_2Y6_P_i/view?usp=sharing)
+[[▶️ Ver el video](https://drive.google.com/file/d/1t8OL52brbNwFJitO3afoBs61B9GVCEYo/view?usp=sharing)
 ]
 ---
 
@@ -215,8 +215,8 @@ POO_TecnoStore/
 | N.° | Apellidos y nombres | Código |
 |---|---|---|
 | 1 | Checalla Alata, Cristian Alex | 231503 |
-| 2 | Condori Tarqui William Martin | 123454 |
-| 3 | Huacasi Sejje, Anthony Jose | 123429 |
+| 2 | Condori Tarqui William Martin | 260667 |
+| 3 | Huacasi Sejje, Anthony Jose | 228864 |
 
 **Docente:** Miguel Romilio, Aceituno Rojo
 
